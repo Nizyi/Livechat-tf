@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Configuration</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f0f13;
+      color: #e2e8f0;
+      padding: 28px 32px;
+      user-select: none;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+
+    .logo-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #ef4444;
+      animation: blink 1.4s infinite;
+    }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+    .logo-text {
+      font-size: 14px; font-weight: 700;
+      letter-spacing: 0.12em; text-transform: uppercase; color: #fff;
+    }
+
+    .logo-sub { font-size: 11px; color: #64748b; letter-spacing: 0.06em; }
+
+    label {
+      display: block;
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: #64748b; margin-bottom: 8px;
+    }
+
+    .section { margin-bottom: 20px; }
+
+    /* ── Sélecteur d'écran ──────────────────────────────────────────────── */
+    select {
+      width: 100%; padding: 10px 14px;
+      background: #1e1e2a; color: #e2e8f0;
+      border: 1px solid #2d2d3f; border-radius: 10px;
+      font-size: 13px; font-family: inherit;
+      appearance: none; cursor: pointer; outline: none;
+      transition: border-color .2s;
+    }
+    select:focus { border-color: #6366f1; }
+
+    .select-wrap { position: relative; }
+    .select-arrow {
+      position: absolute; right: 14px; top: 50%;
+      transform: translateY(-50%); color: #64748b;
+      pointer-events: none; font-size: 11px;
+    }
+
+    /* ── Sélecteur de mode ──────────────────────────────────────────────── */
+    .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    .mode-card {
+      position: relative; padding: 14px 16px;
+      background: #1e1e2a; border: 1.5px solid #2d2d3f;
+      border-radius: 12px; cursor: pointer;
+      transition: border-color .2s, background .2s;
+    }
+    .mode-card:hover { background: #252535; }
+    .mode-card.active { border-color: #6366f1; background: rgba(99,102,241,.1); }
+
+    .mode-card .check {
+      position: absolute; top: 10px; right: 10px;
+      width: 16px; height: 16px; border-radius: 50%;
+      border: 1.5px solid #3d3d55;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 9px; transition: all .2s;
+    }
+    .mode-card.active .check { background: #6366f1; border-color: #6366f1; color: #fff; }
+
+    .mode-icon { font-size: 22px; margin-bottom: 6px; }
+    .mode-title { font-size: 12px; font-weight: 700; color: #e2e8f0; margin-bottom: 2px; }
+    .mode-desc { font-size: 10px; color: #64748b; line-height: 1.5; }
+
+    /* ── Sélecteur de coin (mode petit seulement) ───────────────────────── */
+    .corner-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+
+    .corner-btn {
+      padding: 9px 10px;
+      background: #1e1e2a; border: 1.5px solid #2d2d3f;
+      border-radius: 8px; font-size: 11px; font-weight: 600;
+      color: #94a3b8; cursor: pointer; text-align: center;
+      transition: border-color .2s, background .2s, color .2s;
+    }
+    .corner-btn:hover { background: #252535; }
+    .corner-btn.active { border-color: #6366f1; background: rgba(99,102,241,.1); color: #a5b4fc; }
+
+    /* ── Raccourci skip ─────────────────────────────────────────────────── */
+    .key-capture {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 9px 14px;
+      background: #1e1e2a; border: 1.5px solid #2d2d3f;
+      border-radius: 10px; cursor: pointer;
+      transition: border-color .2s, background .2s;
+    }
+    .key-capture:hover { border-color: #4f4f70; }
+    .key-capture.listening { border-color: #6366f1; background: rgba(99,102,241,.08); }
+
+    .key-hint { font-size: 10px; color: #64748b; }
+    .key-capture.listening .key-hint { color: #a5b4fc; }
+
+    .key-tag {
+      padding: 3px 10px;
+      background: #2d2d3f; border-radius: 6px;
+      font-size: 11px; font-weight: 700;
+      font-family: 'Courier New', monospace;
+      color: #a5b4fc; letter-spacing: .06em;
+      white-space: nowrap;
+    }
+
+    /* ── Volume ─────────────────────────────────────────────────────────── */
+    .volume-row { display: flex; align-items: center; gap: 10px; }
+
+    input[type="range"] {
+      flex: 1; height: 4px;
+      accent-color: #6366f1; cursor: pointer;
+    }
+
+    .volume-value {
+      font-size: 11px; font-weight: 700;
+      color: #a5b4fc; min-width: 34px; text-align: right;
+    }
+
+    /* ── Bouton lancer ──────────────────────────────────────────────────── */
+    .btn-launch {
+      width: 100%; padding: 12px; margin-top: 24px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: #fff; border: none; border-radius: 12px;
+      font-size: 13px; font-weight: 700; letter-spacing: 0.06em;
+      cursor: pointer; transition: opacity .2s, transform .1s;
+    }
+    .btn-launch:hover  { opacity: .9; }
+    .btn-launch:active { transform: scale(0.98); }
+
+    .shortcut-hint {
+      text-align: center; font-size: 10px;
+      color: #3d3d55; margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="logo">
+    <div class="logo-dot"></div>
+    <div>
+      <div class="logo-text">LiveChat Overlay</div>
+      <div class="logo-sub">Configuration du lancement</div>
+    </div>
+  </div>
+
+  <!-- Écran cible -->
+  <div class="section">
+    <label>Écran d'affichage</label>
+    <div class="select-wrap">
+      <select id="screen-select"></select>
+      <span class="select-arrow">▼</span>
+    </div>
+  </div>
+
+  <!-- Mode d'affichage -->
+  <div class="section">
+    <label>Mode d'affichage</label>
+    <div class="mode-grid">
+      <div class="mode-card active" data-mode="small">
+        <div class="check">✓</div>
+        <div class="mode-icon">🪟</div>
+        <div class="mode-title">Petit</div>
+        <div class="mode-desc">Carte en coin d'écran, discrète</div>
+      </div>
+      <div class="mode-card" data-mode="large">
+        <div class="check"></div>
+        <div class="mode-icon">🖥️</div>
+        <div class="mode-title">Grand</div>
+        <div class="mode-desc">Carte centrale, style TikTok</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Position (mode petit uniquement) -->
+  <div class="section" id="corner-section">
+    <label>Position de la carte</label>
+    <div class="corner-grid">
+      <div class="corner-btn" data-corner="top-left">↖ Haut gauche</div>
+      <div class="corner-btn" data-corner="top-right">↗ Haut droite</div>
+      <div class="corner-btn" data-corner="bottom-left">↙ Bas gauche</div>
+      <div class="corner-btn active" data-corner="bottom-right">↘ Bas droite</div>
+    </div>
+  </div>
+
+  <!-- Raccourci skip -->
+  <div class="section">
+    <label>Raccourci pour passer au suivant</label>
+    <div class="key-capture" id="key-capture">
+      <span class="key-hint" id="key-hint">Cliquer pour changer</span>
+      <span class="key-tag" id="key-display">Page ↓</span>
+    </div>
+  </div>
+
+  <!-- Volume -->
+  <div class="section">
+    <label>Volume des vidéos</label>
+    <div class="volume-row">
+      <input type="range" id="volume" min="0" max="100" value="100">
+      <span class="volume-value" id="volume-value">100%</span>
+    </div>
+  </div>
+
+  <button class="btn-launch" id="btn-launch">Lancer l'overlay</button>
+  <p class="shortcut-hint">Ctrl+Shift+Q pour fermer · Ctrl+Shift+P pour les paramètres</p>
+
+  <script>
+    const { ipcRenderer } = require('electron')
+
+    // ── État ────────────────────────────────────────────────────────────────
+    let selectedMode   = 'small'
+    let selectedCorner = 'bottom-right'
+    let skipKey        = 'PageDown'
+    let captureMode    = false
+
+    const select       = document.getElementById('screen-select')
+    const cornerSection = document.getElementById('corner-section')
+    const keyCapture   = document.getElementById('key-capture')
+    const keyHint      = document.getElementById('key-hint')
+    const keyDisplay   = document.getElementById('key-display')
+    const volumeInput  = document.getElementById('volume')
+    const volumeValue  = document.getElementById('volume-value')
+
+    // ── Conversion key → Electron accelerator ───────────────────────────────
+    function keyToAccelerator(key) {
+      if (key === ' ')          return 'Space'
+      if (key === 'ArrowDown')  return 'Down'
+      if (key === 'ArrowUp')    return 'Up'
+      if (key === 'ArrowLeft')  return 'Left'
+      if (key === 'ArrowRight') return 'Right'
+      if (key.length === 1)     return key.toUpperCase()
+      return key
+    }
+
+    function keyLabel(acc) {
+      const map = {
+        'PageDown': 'Page ↓', 'PageUp': 'Page ↑',
+        'Down': '↓', 'Up': '↑', 'Left': '←', 'Right': '→',
+        'Space': 'Espace', 'Home': 'Début', 'End': 'Fin',
+        'Insert': 'Inser', 'Delete': 'Suppr', 'Escape': 'Échap',
+        'Return': 'Entrée'
+      }
+      return map[acc] || acc
+    }
+
+    // ── Réception des paramètres sauvegardés + liste des écrans ────────────
+    ipcRenderer.on('init', (event, { displays, primaryId, settings }) => {
+      // Écrans
+      displays.forEach((d, i) => {
+        const opt = document.createElement('option')
+        opt.value = i
+        opt.textContent = d.id === primaryId
+          ? `Écran ${i + 1} — ${d.size.width}×${d.size.height} (Principal)`
+          : `Écran ${i + 1} — ${d.size.width}×${d.size.height}`
+        if (d.id === primaryId) opt.selected = true
+        select.appendChild(opt)
+      })
+
+      // Restaurer displayIndex
+      if (settings.displayIndex !== undefined && settings.displayIndex < displays.length) {
+        select.value = settings.displayIndex
+      }
+
+      // Restaurer mode
+      if (settings.mode) {
+        document.querySelectorAll('.mode-card').forEach(c => {
+          const active = c.dataset.mode === settings.mode
+          c.classList.toggle('active', active)
+          c.querySelector('.check').textContent = active ? '✓' : ''
+        })
+        selectedMode = settings.mode
+        cornerSection.style.display = selectedMode === 'small' ? 'block' : 'none'
+      }
+
+      // Restaurer coin
+      if (settings.corner) {
+        document.querySelectorAll('.corner-btn').forEach(b => {
+          b.classList.toggle('active', b.dataset.corner === settings.corner)
+        })
+        selectedCorner = settings.corner
+      }
+
+      // Restaurer raccourci
+      if (settings.skipKey) {
+        skipKey = settings.skipKey
+        keyDisplay.textContent = keyLabel(settings.skipKey)
+      }
+
+      // Restaurer volume
+      if (settings.volume !== undefined) {
+        volumeInput.value = settings.volume
+        volumeValue.textContent = settings.volume + '%'
+      }
+    })
+
+    // ── Sélection du mode ───────────────────────────────────────────────────
+    document.querySelectorAll('.mode-card').forEach(card => {
+      card.addEventListener('click', () => {
+        document.querySelectorAll('.mode-card').forEach(c => {
+          c.classList.remove('active')
+          c.querySelector('.check').textContent = ''
+        })
+        card.classList.add('active')
+        card.querySelector('.check').textContent = '✓'
+        selectedMode = card.dataset.mode
+
+        const isSmall = selectedMode === 'small'
+        cornerSection.style.display = isSmall ? 'block' : 'none'
+        ipcRenderer.send('resize-setup', isSmall ? 700 : 590)
+      })
+    })
+
+    // ── Sélection du coin ───────────────────────────────────────────────────
+    document.querySelectorAll('.corner-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.corner-btn').forEach(b => b.classList.remove('active'))
+        btn.classList.add('active')
+        selectedCorner = btn.dataset.corner
+      })
+    })
+
+    // ── Capture du raccourci skip ───────────────────────────────────────────
+    keyCapture.addEventListener('click', () => {
+      if (captureMode) return
+      captureMode = true
+      keyCapture.classList.add('listening')
+      keyHint.textContent = 'Appuyer sur une touche...'
+      keyDisplay.textContent = '?'
+    })
+
+    document.addEventListener('keydown', (e) => {
+      if (!captureMode) return
+      e.preventDefault()
+      e.stopPropagation()
+
+      // Annuler avec Échap
+      if (e.key === 'Escape') {
+        captureMode = false
+        keyCapture.classList.remove('listening')
+        keyHint.textContent = 'Cliquer pour changer'
+        keyDisplay.textContent = keyLabel(skipKey)
+        return
+      }
+
+      // Ignorer les modificateurs seuls
+      if (['Control', 'Shift', 'Alt', 'Meta', 'CapsLock'].includes(e.key)) return
+
+      skipKey = keyToAccelerator(e.key)
+      captureMode = false
+      keyCapture.classList.remove('listening')
+      keyHint.textContent = 'Cliquer pour changer'
+      keyDisplay.textContent = keyLabel(skipKey)
+    }, true)
+
+    // ── Volume ──────────────────────────────────────────────────────────────
+    volumeInput.addEventListener('input', () => {
+      volumeValue.textContent = volumeInput.value + '%'
+    })
+
+    // ── Lancement ───────────────────────────────────────────────────────────
+    document.getElementById('btn-launch').addEventListener('click', () => {
+      ipcRenderer.send('launch-overlay', {
+        displayIndex: parseInt(select.value, 10),
+        mode:         selectedMode,
+        corner:       selectedMode === 'small' ? selectedCorner : 'bottom-right',
+        skipKey,
+        volume:       parseInt(volumeInput.value, 10)
+      })
+    })
+  </script>
+</body>
+</html>

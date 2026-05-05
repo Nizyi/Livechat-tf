@@ -1,0 +1,14 @@
+{
+  "name": "livechat-bot",
+  "version": "1.0.0",
+  "description": "Bot Discord LiveChat – envoie images/vidéos/textes vers l'overlay Electron",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.4.5",
+    "ws": "^8.17.0"
+  }
+}

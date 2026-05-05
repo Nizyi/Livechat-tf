@@ -1,0 +1,23 @@
+{
+  "name": "livechat-overlay",
+  "version": "1.0.0",
+  "description": "Overlay transparent LiveChat – affiche les contenus reçus du bot Discord",
+  "main": "main.js",
+  
+  "build": {
+    "appId": "com.livechat.overlay",
+    "win": {
+      "target": "dir",
+      "icon": "logo.jpg"
+    }
+  },
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  
+  
+  "devDependencies": {
+    "electron-builder": "^26.8.1"
+  }
+}

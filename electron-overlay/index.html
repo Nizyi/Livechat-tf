@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>LiveChat Overlay</title>
+  <style>
+    /* ── Reset ─────────────────────────────────────────────────────────────── */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100vw; height: 100vh;
+      overflow: hidden;
+      background: transparent;
+      font-family: 'Segoe UI', 'Inter', system-ui, sans-serif;
+      color: #fff;
+      -webkit-app-region: no-drag;
+    }
+
+    /* ════════════════════════════════════════════════════════════════════════
+       MODE COMMUN — styles partagés petit et grand
+    ════════════════════════════════════════════════════════════════════════ */
+
+    #card {
+      position: fixed;
+      pointer-events: none;
+      opacity: 0;
+      transition:
+        opacity  0.5s cubic-bezier(0.34, 1.1, 0.64, 1),
+        transform 0.5s cubic-bezier(0.34, 1.1, 0.64, 1);
+    }
+
+    #card.visible { opacity: 1; }
+
+    /* Halo lumineux derrière la carte */
+    .halo {
+      position: absolute;
+      border-radius: 44px;
+      background: linear-gradient(160deg,
+        rgba(96,165,250,.35) 0%,
+        rgba(168,85,247,.35) 50%,
+        rgba(236,72,153,.35) 100%);
+      filter: blur(40px);
+      z-index: -1;
+      transition: opacity .5s;
+    }
+
+    /* Contour dégradé */
+    .gradient-frame {
+      padding: 2px;
+      border-radius: 28px;
+      background: linear-gradient(to bottom,
+        rgba(255,255,255,.42),
+        rgba(255,255,255,.07),
+        rgba(255,255,255,.42));
+      box-shadow: 0 0 40px rgba(0,0,0,.55), 0 20px 48px rgba(0,0,0,.4);
+    }
+
+    /* Glassmorphism intérieur */
+    .glass {
+      border-radius: 26px;
+      overflow: hidden;
+      background: rgba(8,8,14,.58);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+    }
+
+    /* ── En-tête profil ────────────────────────────────────────────────────── */
+    .profile-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 13px 16px;
+      border-bottom: 1px solid rgba(255,255,255,.07);
+      flex-shrink: 0;
+    }
+
+    .avatar-wrap { position: relative; flex-shrink: 0; }
+
+    .avatar-img {
+      display: block;
+      object-fit: cover;
+      border-radius: 11px;
+      border: 1.5px solid rgba(255,255,255,.18);
+    }
+
+    .avatar-initial {
+      border-radius: 11px;
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      border: 1.5px solid rgba(255,255,255,.18);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .online-dot {
+      position: absolute; bottom: -2px; right: -2px;
+      width: 11px; height: 11px;
+      background: #22c55e;
+      border-radius: 50%;
+      border: 2px solid rgba(8,8,14,.8);
+    }
+
+    .username {
+      font-weight: 800;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      background: linear-gradient(90deg, #fff 0%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .live-badge {
+      display: flex; align-items: center; gap: 5px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: rgba(220,38,38,.85);
+      border: 1px solid rgba(248,113,113,.4);
+      font-size: 8px; font-weight: 900;
+      letter-spacing: .18em; text-transform: uppercase;
+      flex-shrink: 0;
+    }
+
+    .live-dot {
+      width: 5px; height: 5px;
+      background: #fff; border-radius: 50%;
+      animation: blink 1.4s ease-in-out infinite;
+    }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+    /* ── Zone média ─────────────────────────────────────────────────────────── */
+    .media-zone {
+      position: relative;
+      width: 100%;
+      background: #000;
+      display: none;
+      flex-shrink: 0;
+    }
+    .media-zone.has-media { display: block; }
+
+    .media-zone img,
+    .media-zone video {
+      display: block;
+      width: 100%;
+      height: auto;
+      object-fit: contain;
+      background: #000;
+    }
+
+    .media-gradient {
+      position: absolute; inset-x: 0; bottom: 0;
+      height: 55%;
+      background: linear-gradient(to top, rgba(0,0,0,.88), transparent);
+      pointer-events: none;
+      display: none;
+    }
+
+    /* Texte superposé au média */
+    .text-on-media {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      padding: 12px 16px 15px;
+      display: none;
+    }
+
+    /* Texte seul (sans média) */
+    .text-zone {
+      padding: 14px 16px 16px;
+      display: none;
+      flex-shrink: 0;
+    }
+
+    .accent-bar {
+      width: 34px; height: 3px;
+      border-radius: 999px;
+      background: #60a5fa;
+      box-shadow: 0 0 10px rgba(96,165,250,.7);
+      margin-bottom: 7px;
+    }
+
+    .msg-text {
+      font-weight: 700;
+      font-style: italic;
+      line-height: 1.45;
+      color: #fff;
+      text-shadow: 0 2px 10px rgba(0,0,0,.9);
+      word-break: break-word;
+    }
+
+    /* ── Barre de progression ────────────────────────────────────────────────── */
+    .progress-track { height: 2.5px; background: rgba(255,255,255,.07); flex-shrink: 0; }
+
+    .progress-fill {
+      height: 100%; width: 100%;
+      background: linear-gradient(90deg, #60a5fa, #a78bfa, #ec4899);
+      transform-origin: left center;
+    }
+
+    .progress-fill.running {
+      animation: shrink linear forwards;
+    }
+
+    @keyframes shrink { from{transform:scaleX(1)} to{transform:scaleX(0)} }
+
+    /* ── Badge file d'attente ────────────────────────────────────────────────── */
+    #queue-badge {
+      display: none;
+      position: absolute;
+      top: -10px;
+      left: 16px;
+      background: rgba(99,102,241,.9);
+      border: 1px solid rgba(165,180,252,.4);
+      border-radius: 999px;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: .1em;
+      padding: 3px 9px;
+      color: #fff;
+      white-space: nowrap;
+      z-index: 10;
+    }
+
+    /* ════════════════════════════════════════════════════════════════════════
+       MODE PETIT — position selon le coin choisi
+    ════════════════════════════════════════════════════════════════════════ */
+    body.mode-small #card {
+      width: min(400px, calc(100vw - 96px));
+    }
+
+    /* Positions + animation d'entrée par coin */
+    body.mode-small.corner-bottom-right #card { bottom: 48px; right: 48px; transform: translateY(20px)  scale(.97); }
+    body.mode-small.corner-bottom-left  #card { bottom: 48px; left:  48px; transform: translateY(20px)  scale(.97); }
+    body.mode-small.corner-top-right    #card { top:    48px; right: 48px; transform: translateY(-20px) scale(.97); }
+    body.mode-small.corner-top-left     #card { top:    48px; left:  48px; transform: translateY(-20px) scale(.97); }
+
+    body.mode-small #card.visible {
+      transform: translateY(0) scale(1);
+    }
+
+    /* Badge file d'attente : en bas pour les coins du haut */
+    body.mode-small.corner-top-right #queue-badge,
+    body.mode-small.corner-top-left  #queue-badge {
+      top:    unset;
+      bottom: -10px;
+    }
+
+    body.mode-small .halo {
+      inset: -14px;
+    }
+
+    body.mode-small .avatar-img,
+    body.mode-small .avatar-initial {
+      width: 42px; height: 42px; font-size: 17px;
+    }
+
+    body.mode-small .username  { font-size: 13px; }
+    body.mode-small .msg-text  { font-size: 14px; }
+
+    body.mode-small .media-zone img,
+    body.mode-small .media-zone video {
+      max-height: 55vh;
+    }
+
+    /* ════════════════════════════════════════════════════════════════════════
+       MODE GRAND — centré, style TikTok
+    ════════════════════════════════════════════════════════════════════════ */
+    body.mode-large #card {
+      top: 50%;
+      left: 50%;
+      /* Largeur adaptée : portrait = 400px, mais on laisse le max-height dicter */
+      width: min(420px, calc(100vw - 80px));
+      transform: translate(-50%, calc(-50% + 24px)) scale(.96);
+      /* On utilise flex pour que la carte prenne la hauteur de son contenu
+         mais ne dépasse pas l'écran */
+      display: flex;
+      flex-direction: column;
+      max-height: 88vh;
+    }
+
+    body.mode-large #card.visible {
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    body.mode-large .gradient-frame {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
+
+    body.mode-large .glass {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
+
+    body.mode-large .media-zone {
+      flex: 1;
+      min-height: 0;
+      display: none; /* override: géré par .has-media */
+    }
+
+    body.mode-large .media-zone.has-media {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    body.mode-large .media-zone img,
+    body.mode-large .media-zone video {
+      max-height: 100%;
+      width: 100%;
+      height: auto;
+      object-fit: contain;
+    }
+
+    body.mode-large .halo {
+      inset: -20px;
+      filter: blur(60px);
+      opacity: .8;
+    }
+
+    body.mode-large .avatar-img,
+    body.mode-large .avatar-initial {
+      width: 52px; height: 52px; font-size: 22px;
+    }
+
+    body.mode-large .username  { font-size: 16px; }
+    body.mode-large .live-badge { font-size: 9px; padding: 4px 11px; }
+    body.mode-large .msg-text  { font-size: 17px; line-height: 1.5; }
+    body.mode-large .accent-bar { width: 44px; height: 4px; }
+    body.mode-large .text-on-media { padding: 18px 20px 22px; }
+
+    /* ── HUD décoratif (mode grand seulement) ───────────────────────────────── */
+    #hud {
+      position: fixed;
+      top: 20px; right: 20px;
+      font-family: 'Courier New', monospace;
+      font-size: 9px;
+      letter-spacing: .12em;
+      color: rgba(255,255,255,.18);
+      line-height: 1.8;
+      text-align: right;
+      text-transform: uppercase;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .5s;
+    }
+
+    #hud.visible { opacity: 1; }
+    body.mode-small #hud { display: none; }
+
+    .hud-bar {
+      width: 48px; height: 1px;
+      background: rgba(255,255,255,.15);
+      margin-left: auto;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HUD (mode grand) -->
+  <div id="hud">
+    <span id="hud-time">--:--:--</span><br>
+    OVERLAY · LIVE<br>
+    <div class="hud-bar"></div>
+  </div>
+
+  <!-- Carte principale -->
+  <div id="card">
+    <div id="queue-badge"></div>
+    <div class="halo"></div>
+
+    <div class="gradient-frame">
+      <div class="glass">
+
+        <!-- Profil -->
+        <div class="profile-row">
+          <div class="avatar-wrap" id="avatar-wrap">
+            <div class="avatar-initial" id="avatar-initial">?</div>
+            <div class="online-dot"></div>
+          </div>
+          <span class="username" id="username">—</span>
+          <div class="live-badge">
+            <div class="live-dot"></div>
+            Live
+          </div>
+        </div>
+
+        <!-- Média -->
+        <div class="media-zone" id="media-zone">
+          <div class="media-gradient" id="media-gradient"></div>
+          <div id="media-slot"></div>
+          <div class="text-on-media" id="text-on-media">
+            <div class="accent-bar"></div>
+            <p class="msg-text" id="tom-content"></p>
+          </div>
+        </div>
+
+        <!-- Texte seul -->
+        <div class="text-zone" id="text-zone">
+          <div class="accent-bar"></div>
+          <p class="msg-text" id="tz-content"></p>
+        </div>
+
+        <!-- Barre de progression -->
+        <div class="progress-track">
+          <div class="progress-fill" id="progress"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Configuration
+  // ═══════════════════════════════════════════════════════════════════════════
+  const WS_URL        = 'ws://localhost:8080'
+  const RECONNECT_MS  = 3000
+  const IMG_DISPLAY_MS = 9000    // durée fixe pour les images
+  const BETWEEN_MS     = 400     // pause entre deux cartes
+
+  // URLs Discord CDN autorisées
+  const ALLOWED_CDN = [
+    'cdn.discordapp.com',
+    'media.discordapp.net',
+    'images-ext-1.discordapp.net',
+    'images-ext-2.discordapp.net'
+  ]
+
+  // Types MIME acceptés
+  const ALLOWED_MIME = [
+    'image/png', 'image/jpeg', 'image/gif', 'image/webp',
+    'video/mp4', 'video/webm', 'video/ogg'
+  ]
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Mode d'affichage (passé par query param depuis main.js)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const { ipcRenderer } = require('electron')
+
+  const params  = new URLSearchParams(window.location.search)
+  const MODE    = params.get('mode') === 'large' ? 'large' : 'small'
+  const CORNERS = ['bottom-right', 'bottom-left', 'top-right', 'top-left']
+  const CORNER  = CORNERS.includes(params.get('corner')) ? params.get('corner') : 'bottom-right'
+  const VOLUME  = Math.max(0, Math.min(100, parseInt(params.get('volume')) || 100)) / 100
+  document.body.classList.add('mode-' + MODE)
+  if (MODE === 'small') document.body.classList.add('corner-' + CORNER)
+
+  // Skip raccourci (PageDown ou custom) → passe au suivant immédiatement
+  ipcRenderer.on('skip', () => {
+    clearTimeout(currentTimer)
+    onDone()
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Références DOM
+  // ═══════════════════════════════════════════════════════════════════════════
+  const card          = document.getElementById('card')
+  const avatarWrap    = document.getElementById('avatar-wrap')
+  const avatarInitial = document.getElementById('avatar-initial')
+  const usernameEl    = document.getElementById('username')
+  const mediaZone     = document.getElementById('media-zone')
+  const mediaSlot     = document.getElementById('media-slot')
+  const mediaGradient = document.getElementById('media-gradient')
+  const textOnMedia   = document.getElementById('text-on-media')
+  const tomContent    = document.getElementById('tom-content')
+  const textZone      = document.getElementById('text-zone')
+  const tzContent     = document.getElementById('tz-content')
+  const progressBar   = document.getElementById('progress')
+  const queueBadge    = document.getElementById('queue-badge')
+  const hud           = document.getElementById('hud')
+  const hudTime       = document.getElementById('hud-time')
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // File d'attente
+  // ═══════════════════════════════════════════════════════════════════════════
+  const queue      = []
+  let isShowing    = false
+  let currentTimer = null
+
+  function enqueue(data) {
+    queue.push(data)
+    updateBadge()
+    if (!isShowing) processNext()
+  }
+
+  function processNext() {
+    if (queue.length === 0) {
+      isShowing = false
+      hideCard()
+      return
+    }
+    isShowing = true
+    const data = queue.shift()
+    updateBadge()
+    renderCard(data)
+  }
+
+  function onDone() {
+    clearTimeout(currentTimer)
+    stopAllMedia()
+    card.classList.remove('visible')
+    if (MODE === 'large') hud.classList.remove('visible')
+    setTimeout(processNext, BETWEEN_MS)
+  }
+
+  function updateBadge() {
+    if (queue.length > 0) {
+      queueBadge.textContent = `+${queue.length} en attente`
+      queueBadge.style.display = 'block'
+    } else {
+      queueBadge.style.display = 'none'
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Arrêt complet des médias (son + image)
+  // ═══════════════════════════════════════════════════════════════════════════
+  function stopAllMedia() {
+    const vids = mediaSlot.querySelectorAll('video')
+    vids.forEach(v => {
+      v.pause()
+      v.removeAttribute('src')
+      v.load()          // libère la ressource
+    })
+    // On vide le slot après un court délai (laisse le temps au navigateur)
+    setTimeout(() => { mediaSlot.innerHTML = '' }, 100)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Sécurité — validation des données reçues
+  // ═══════════════════════════════════════════════════════════════════════════
+  function isAllowedUrl(url) {
+    if (!url || typeof url !== 'string') return false
+    try {
+      const u = new URL(url)
+      if (u.protocol !== 'https:') return false
+      return ALLOWED_CDN.some(cdn => u.hostname === cdn || u.hostname.endsWith('.' + cdn))
+    } catch { return false }
+  }
+
+  function isAllowedMime(mime) {
+    if (!mime) return true  // si absent, on tente quand même (on verra à l'affichage)
+    return ALLOWED_MIME.includes(mime.toLowerCase().split(';')[0].trim())
+  }
+
+  function sanitizeText(text) {
+    if (!text || typeof text !== 'string') return null
+    // Limite de longueur + suppression caractères de contrôle
+    return text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').substring(0, 500) || null
+  }
+
+  function validatePayload(data) {
+    if (!data || typeof data !== 'object') return null
+
+    const clean = {
+      author:    typeof data.author === 'string' ? data.author.substring(0, 64) : 'Anonyme',
+      avatarUrl: isAllowedUrl(data.avatarUrl) ? data.avatarUrl : null,
+      text:      sanitizeText(data.text),
+      url:       null,
+      type:      'text'
+    }
+
+    // Valider l'URL média
+    if (data.url && isAllowedUrl(data.url) && isAllowedMime(data.contentType)) {
+      clean.url  = data.url
+      clean.type = (data.type === 'video' || data.type === 'image') ? data.type : 'image'
+    }
+
+    // Ignorer si totalement vide
+    if (!clean.text && !clean.url) return null
+
+    return clean
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Rendu de la carte
+  // ═══════════════════════════════════════════════════════════════════════════
+  function renderCard(data) {
+    // ── Avatar ───────────────────────────────────────────────────────────────
+    const oldImg = avatarWrap.querySelector('img')
+    if (oldImg) oldImg.remove()
+    avatarInitial.style.display = 'none'
+
+    if (data.avatarUrl) {
+      const img = document.createElement('img')
+      img.className = 'avatar-img'
+      img.src = data.avatarUrl
+      img.onerror = () => { img.remove(); showInitial(data.author) }
+      avatarWrap.insertBefore(img, avatarWrap.querySelector('.online-dot'))
+    } else {
+      showInitial(data.author)
+    }
+
+    // ── Nom ──────────────────────────────────────────────────────────────────
+    // textContent = pas d'injection HTML possible
+    usernameEl.textContent = data.author
+
+    // ── Reset zones ──────────────────────────────────────────────────────────
+    mediaZone.classList.remove('has-media')
+    mediaGradient.style.display = 'none'
+    textOnMedia.style.display   = 'none'
+    textZone.style.display      = 'none'
+
+    // ── Média ────────────────────────────────────────────────────────────────
+    if (data.url && data.type !== 'text') {
+      mediaZone.classList.add('has-media')
+
+      if (data.type === 'image') {
+        renderImage(data)
+      } else if (data.type === 'video') {
+        renderVideo(data)
+        // La durée de la vidéo détermine le timer → on attend loadedmetadata
+        showCard()
+        return
+      }
+
+      // Texte sur l'image
+      if (data.text) {
+        mediaGradient.style.display = 'block'
+        textOnMedia.style.display   = 'block'
+        tomContent.textContent      = data.text
+      }
+
+      showCard()
+      startProgress(IMG_DISPLAY_MS)
+      currentTimer = setTimeout(onDone, IMG_DISPLAY_MS)
+
+    } else {
+      // Texte seul
+      textZone.style.display = 'block'
+      tzContent.textContent  = data.text
+
+      showCard()
+      startProgress(IMG_DISPLAY_MS)
+      currentTimer = setTimeout(onDone, IMG_DISPLAY_MS)
+    }
+  }
+
+  function renderImage(data) {
+    const img = document.createElement('img')
+    img.src = data.url
+    img.alt = ''
+    img.onerror = () => {
+      // Image cassée → passer au suivant
+      clearTimeout(currentTimer)
+      onDone()
+    }
+    mediaSlot.innerHTML = ''
+    mediaSlot.appendChild(img)
+  }
+
+  function renderVideo(data) {
+    const vid = document.createElement('video')
+    vid.autoplay    = true
+    vid.loop        = false   // ← pas de boucle
+    vid.muted       = false
+    vid.volume      = VOLUME
+    vid.controls    = false
+    vid.playsInline = true
+    vid.src         = data.url
+
+    vid.addEventListener('loadedmetadata', () => {
+      const durMs = Math.max(vid.duration * 1000, 1000)
+
+      if (data.text) {
+        mediaGradient.style.display = 'block'
+        textOnMedia.style.display   = 'block'
+        tomContent.textContent      = data.text
+      }
+
+      startProgress(durMs)
+      // Timer = durée réelle de la vidéo
+      currentTimer = setTimeout(onDone, durMs)
+    })
+
+    // La vidéo a fini naturellement → on passe au suivant immédiatement
+    vid.addEventListener('ended', () => {
+      clearTimeout(currentTimer)
+      onDone()
+    })
+
+    vid.addEventListener('error', () => {
+      clearTimeout(currentTimer)
+      onDone()
+    })
+
+    mediaSlot.innerHTML = ''
+    mediaSlot.appendChild(vid)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Affichage / masquage
+  // ═══════════════════════════════════════════════════════════════════════════
+  function showCard() {
+    card.classList.add('visible')
+    if (MODE === 'large') hud.classList.add('visible')
+  }
+
+  function hideCard() {
+    card.classList.remove('visible')
+    if (MODE === 'large') hud.classList.remove('visible')
+    stopAllMedia()
+  }
+
+  function showInitial(name) {
+    avatarInitial.textContent    = (name || '?')[0].toUpperCase()
+    avatarInitial.style.display  = 'flex'
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Barre de progression
+  // ═══════════════════════════════════════════════════════════════════════════
+  function startProgress(durationMs) {
+    progressBar.classList.remove('running')
+    progressBar.style.animation = 'none'
+    void progressBar.offsetWidth  // reflow pour reset l'animation
+    progressBar.style.animation = ''
+    progressBar.style.animationDuration = durationMs + 'ms'
+    progressBar.classList.add('running')
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Horloge HUD
+  // ═══════════════════════════════════════════════════════════════════════════
+  function updateClock() {
+    const n = new Date()
+    hudTime.textContent = n.toTimeString().slice(0, 8)
+  }
+  updateClock()
+  setInterval(updateClock, 1000)
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WebSocket — connexion avec reconnexion auto
+  // ═══════════════════════════════════════════════════════════════════════════
+  function connectWS() {
+    const ws = new WebSocket(WS_URL)
+
+    ws.onopen = () => {
+      console.log('[WS] Connecté au bot')
+    }
+
+    ws.onmessage = (event) => {
+      try {
+        const raw  = JSON.parse(event.data)
+        const data = validatePayload(raw)
+        if (data) {
+          enqueue(data)
+        } else {
+          console.warn('[Sécurité] Payload ignoré (invalide ou vide)')
+        }
+      } catch (e) {
+        console.error('[WS] Erreur parsing :', e)
+      }
+    }
+
+    ws.onclose = () => {
+      console.log('[WS] Déconnecté, reconnexion dans', RECONNECT_MS / 1000, 's…')
+      setTimeout(connectWS, RECONNECT_MS)
+    }
+
+    ws.onerror = (e) => console.error('[WS] Erreur :', e)
+  }
+
+  connectWS()
+  </script>
+</body>
+</html>
