@@ -19,7 +19,8 @@ const DEFAULT_SETTINGS = {
   mode:         'small',
   corner:       'bottom-right',
   skipKey:      'PageDown',
-  volume:       100
+  volume:       100,
+  wsHost:       'livechat.tidic.fr:3010'
 }
 
 let settings = { ...DEFAULT_SETTINGS }
@@ -67,7 +68,7 @@ function createSetupWindow() {
 
   setupWin = new BrowserWindow({
     width:     460,
-    height:    700,   // mode petit par défaut (coin + skip + volume)
+    height:    790,   // mode petit par défaut (coin + skip + volume + serveur)
     resizable: false,
     frame:     true,
     center:    true,
@@ -92,7 +93,7 @@ function createSetupWindow() {
 }
 
 // ── Fenêtre overlay ───────────────────────────────────────────────────────────
-function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100) {
+function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100, wsHost = 'livechat.tidic.fr:3010') {
   const displays = screen.getAllDisplays()
   const display  = displays[displayIndex] || displays[0]
   const { x, y, width, height } = display.bounds
@@ -116,13 +117,13 @@ function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100
   overlayWin.setIgnoreMouseEvents(true, { forward: true })
   overlayWin.setAlwaysOnTop(true, 'screen-saver')
 
-  overlayWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode, corner, volume } })
+  overlayWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode, corner, volume, wsHost } })
   overlayWin.on('closed', () => { overlayWin = null })
 }
 
 // ── IPC : la fenêtre setup envoie les choix ──────────────────────────────────
-ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volume }) => {
-  saveSettings({ displayIndex, mode, corner, skipKey, volume })
+ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volume, wsHost }) => {
+  saveSettings({ displayIndex, mode, corner, skipKey, volume, wsHost })
   registerSkipShortcut(skipKey)
 
   // destroy() synchrone — évite que le callback 'closed' écrase la nouvelle ref
@@ -131,7 +132,7 @@ ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volu
     overlayWin.destroy()
     overlayWin = null
   }
-  createOverlay(displayIndex, mode, corner, volume)
+  createOverlay(displayIndex, mode, corner, volume, wsHost)
   if (setupWin) setupWin.close()
 })
 

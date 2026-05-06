@@ -138,6 +138,26 @@
       color: #a5b4fc; min-width: 34px; text-align: right;
     }
 
+    /* ── Serveur WebSocket ──────────────────────────────────────────────── */
+    .server-input {
+      width: 100%; padding: 9px 14px;
+      background: #1e1e2a; color: #e2e8f0;
+      border: 1.5px solid #2d2d3f; border-radius: 10px;
+      font-size: 12px; font-family: 'Courier New', monospace;
+      outline: none; transition: border-color .2s;
+    }
+    .server-input:focus { border-color: #6366f1; }
+
+    /* ── Status connexion ───────────────────────────────────────────────── */
+    #status-msg {
+      text-align: center; font-size: 11px; font-weight: 600;
+      margin-top: 8px; min-height: 16px;
+      transition: color .2s;
+    }
+    #status-msg.ok    { color: #22c55e; }
+    #status-msg.error { color: #ef4444; }
+    #status-msg.info  { color: #64748b; }
+
     /* ── Bouton lancer ──────────────────────────────────────────────────── */
     .btn-launch {
       width: 100%; padding: 12px; margin-top: 24px;
@@ -204,6 +224,13 @@
     </div>
   </div>
 
+  <!-- Serveur WebSocket -->
+  <div class="section">
+    <label>Adresse du serveur</label>
+    <input class="server-input" id="ws-host" type="text"
+           placeholder="host:port" value="livechat.tidic.fr:3010">
+  </div>
+
   <!-- Raccourci skip -->
   <div class="section">
     <label>Raccourci pour passer au suivant</label>
@@ -223,6 +250,7 @@
   </div>
 
   <button class="btn-launch" id="btn-launch">Lancer l'overlay</button>
+  <div id="status-msg" class="info"></div>
   <p class="shortcut-hint">Ctrl+Shift+Q pour fermer · Ctrl+Shift+P pour les paramètres</p>
 
   <script>
@@ -234,13 +262,16 @@
     let skipKey        = 'PageDown'
     let captureMode    = false
 
-    const select       = document.getElementById('screen-select')
+    const select        = document.getElementById('screen-select')
     const cornerSection = document.getElementById('corner-section')
-    const keyCapture   = document.getElementById('key-capture')
-    const keyHint      = document.getElementById('key-hint')
-    const keyDisplay   = document.getElementById('key-display')
-    const volumeInput  = document.getElementById('volume')
-    const volumeValue  = document.getElementById('volume-value')
+    const keyCapture    = document.getElementById('key-capture')
+    const keyHint       = document.getElementById('key-hint')
+    const keyDisplay    = document.getElementById('key-display')
+    const volumeInput   = document.getElementById('volume')
+    const volumeValue   = document.getElementById('volume-value')
+    const wsHostInput   = document.getElementById('ws-host')
+    const statusMsg     = document.getElementById('status-msg')
+    const btnLaunch     = document.getElementById('btn-launch')
 
     // ── Conversion key → Electron accelerator ───────────────────────────────
     function keyToAccelerator(key) {
@@ -312,6 +343,9 @@
         volumeInput.value = settings.volume
         volumeValue.textContent = settings.volume + '%'
       }
+
+      // Restaurer adresse serveur
+      if (settings.wsHost) wsHostInput.value = settings.wsHost
     })
 
     // ── Sélection du mode ───────────────────────────────────────────────────
@@ -327,7 +361,7 @@
 
         const isSmall = selectedMode === 'small'
         cornerSection.style.display = isSmall ? 'block' : 'none'
-        ipcRenderer.send('resize-setup', isSmall ? 700 : 590)
+        ipcRenderer.send('resize-setup', isSmall ? 790 : 680)
       })
     })
 
@@ -378,15 +412,51 @@
       volumeValue.textContent = volumeInput.value + '%'
     })
 
-    // ── Lancement ───────────────────────────────────────────────────────────
-    document.getElementById('btn-launch').addEventListener('click', () => {
-      ipcRenderer.send('launch-overlay', {
-        displayIndex: parseInt(select.value, 10),
-        mode:         selectedMode,
-        corner:       selectedMode === 'small' ? selectedCorner : 'bottom-right',
-        skipKey,
-        volume:       parseInt(volumeInput.value, 10)
+    // ── Test connexion WebSocket ────────────────────────────────────────────
+    function testWsConnection(host) {
+      return new Promise((resolve, reject) => {
+        const ws = new WebSocket('ws://' + host)
+        const timeout = setTimeout(() => {
+          ws.close()
+          reject('timeout (4s)')
+        }, 4000)
+        ws.onopen  = () => { clearTimeout(timeout); ws.close(); resolve() }
+        ws.onerror = () => { clearTimeout(timeout); reject('serveur inaccessible') }
       })
+    }
+
+    function setStatus(msg, type) {
+      statusMsg.textContent = msg
+      statusMsg.className   = type  // 'ok' | 'error' | 'info'
+    }
+
+    // ── Lancement ───────────────────────────────────────────────────────────
+    btnLaunch.addEventListener('click', async () => {
+      const wsHost = wsHostInput.value.trim()
+      if (!wsHost) { setStatus('Adresse du serveur manquante', 'error'); return }
+
+      btnLaunch.disabled    = true
+      btnLaunch.textContent = 'Connexion en cours...'
+      setStatus('', 'info')
+
+      try {
+        await testWsConnection(wsHost)
+        setStatus('✓ Serveur accessible', 'ok')
+        setTimeout(() => {
+          ipcRenderer.send('launch-overlay', {
+            displayIndex: parseInt(select.value, 10),
+            mode:         selectedMode,
+            corner:       selectedMode === 'small' ? selectedCorner : 'bottom-right',
+            skipKey,
+            volume:       parseInt(volumeInput.value, 10),
+            wsHost
+          })
+        }, 400)
+      } catch (err) {
+        setStatus('✗ Erreur : ' + err, 'error')
+        btnLaunch.disabled    = false
+        btnLaunch.textContent = "Lancer l'overlay"
+      }
     })
   </script>
 </body>

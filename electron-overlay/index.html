@@ -274,14 +274,16 @@
     body.mode-large #card {
       top: 50%;
       left: 50%;
-      /* Largeur adaptée : portrait = 400px, mais on laisse le max-height dicter */
-      width: min(420px, calc(100vw - 80px));
-      transform: translate(-50%, calc(-50% + 24px)) scale(.96);
+      /* Largeur dictée par le contenu (image), bornée min/max selon la résolution */
+      width: max-content;
+      min-width: 400px;
+      max-width: min(94vw, 1800px);
+      transform: translate(-50%, calc(-50% + 28px)) scale(.95);
       /* On utilise flex pour que la carte prenne la hauteur de son contenu
          mais ne dépasse pas l'écran */
       display: flex;
       flex-direction: column;
-      max-height: 88vh;
+      max-height: 92vh;
     }
 
     body.mode-large #card.visible {
@@ -314,12 +316,14 @@
       justify-content: center;
     }
 
+    body.mode-large .media-zone       { background: transparent; }
     body.mode-large .media-zone img,
     body.mode-large .media-zone video {
-      max-height: 100%;
-      width: 100%;
+      width: auto;
       height: auto;
-      object-fit: contain;
+      max-width: min(92vw, 1700px);
+      max-height: 88vh;
+      background: transparent;
     }
 
     body.mode-large .halo {
@@ -328,16 +332,19 @@
       opacity: .8;
     }
 
+    body.mode-large .profile-row { padding: 10px 16px; gap: 10px; }
+
     body.mode-large .avatar-img,
     body.mode-large .avatar-initial {
-      width: 52px; height: 52px; font-size: 22px;
+      width: 38px; height: 38px; font-size: 15px; border-radius: 8px;
     }
 
-    body.mode-large .username  { font-size: 16px; }
-    body.mode-large .live-badge { font-size: 9px; padding: 4px 11px; }
-    body.mode-large .msg-text  { font-size: 17px; line-height: 1.5; }
-    body.mode-large .accent-bar { width: 44px; height: 4px; }
-    body.mode-large .text-on-media { padding: 18px 20px 22px; }
+    body.mode-large .username    { font-size: 13px; }
+    body.mode-large .live-badge  { font-size: 8px; padding: 3px 9px; }
+    body.mode-large .msg-text    { font-size: 22px; line-height: 1.5; }
+    body.mode-large .accent-bar  { width: 52px; height: 5px; }
+    body.mode-large .text-on-media { padding: 22px 24px 28px; }
+    body.mode-large .text-zone   { padding: 20px 24px 24px; }
 
     /* ── HUD décoratif (mode grand seulement) ───────────────────────────────── */
     #hud {
@@ -423,9 +430,28 @@
 
   <script>
   // ═══════════════════════════════════════════════════════════════════════════
+  // Query params + mode (en premier — utilisés par les constantes ci-dessous)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const { ipcRenderer } = require('electron')
+
+  const params  = new URLSearchParams(window.location.search)
+  const MODE    = params.get('mode') === 'large' ? 'large' : 'small'
+  const CORNERS = ['bottom-right', 'bottom-left', 'top-right', 'top-left']
+  const CORNER  = CORNERS.includes(params.get('corner')) ? params.get('corner') : 'bottom-right'
+  const VOLUME  = Math.max(0, Math.min(100, parseInt(params.get('volume')) || 100)) / 100
+  document.body.classList.add('mode-' + MODE)
+  if (MODE === 'small') document.body.classList.add('corner-' + CORNER)
+
+  // Skip raccourci (PageDown ou custom) → passe au suivant immédiatement
+  ipcRenderer.on('skip', () => {
+    clearTimeout(currentTimer)
+    onDone()
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // Configuration
   // ═══════════════════════════════════════════════════════════════════════════
-  const WS_URL        = 'ws://localhost:8080'
+  const WS_URL        = params.get('wsHost') ? 'ws://' + params.get('wsHost') : 'ws://livechat.tidic.fr:3010'
   const RECONNECT_MS  = 3000
   const IMG_DISPLAY_MS = 9000    // durée fixe pour les images
   const VIDEO_MAX_MS   = 15000   // durée max pour les vidéos
@@ -444,25 +470,6 @@
     'image/png', 'image/jpeg', 'image/gif', 'image/webp',
     'video/mp4', 'video/webm', 'video/ogg'
   ]
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Mode d'affichage (passé par query param depuis main.js)
-  // ═══════════════════════════════════════════════════════════════════════════
-  const { ipcRenderer } = require('electron')
-
-  const params  = new URLSearchParams(window.location.search)
-  const MODE    = params.get('mode') === 'large' ? 'large' : 'small'
-  const CORNERS = ['bottom-right', 'bottom-left', 'top-right', 'top-left']
-  const CORNER  = CORNERS.includes(params.get('corner')) ? params.get('corner') : 'bottom-right'
-  const VOLUME  = Math.max(0, Math.min(100, parseInt(params.get('volume')) || 100)) / 100
-  document.body.classList.add('mode-' + MODE)
-  if (MODE === 'small') document.body.classList.add('corner-' + CORNER)
-
-  // Skip raccourci (PageDown ou custom) → passe au suivant immédiatement
-  ipcRenderer.on('skip', () => {
-    clearTimeout(currentTimer)
-    onDone()
-  })
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Références DOM

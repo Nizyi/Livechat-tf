@@ -1,0 +1,8 @@
+{
+  "displayIndex": 0,
+  "mode": "large",
+  "corner": "bottom-right",
+  "skipKey": "PageDown",
+  "volume": 100,
+  "wsHost": "localhost:8080"
+}
