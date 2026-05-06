@@ -18,13 +18,19 @@
     "win": {
       "target": "nsis",
       "icon": "logo.jpg"
-    }
+    },
+    "files": [
+      "**/*",
+      "!.env.build",
+      "!.env.example"
+    ]
   },
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder"
   },
   "dependencies": {
+    "dotenv": "^16.6.1",
     "electron-updater": "^6.1.0"
   },
   "devDependencies": {

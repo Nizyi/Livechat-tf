@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Mise à jour</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+
+    html, body {
+      width: 100vw; height: 100vh;
+      background: transparent;
+      font-family: 'Segoe UI', 'Inter', system-ui, sans-serif;
+      overflow: hidden;
+    }
+
+    .toast {
+      position: fixed; inset: 8px;
+      display: flex; flex-direction: column;
+      gap: 10px;
+      padding: 14px 16px 12px;
+      border-radius: 14px;
+      background: rgba(15, 15, 19, .72);
+      border: 1px solid rgba(99, 102, 241, .35);
+      box-shadow: 0 20px 48px rgba(0,0,0,.45), 0 0 0 1px rgba(99,102,241,.12);
+      backdrop-filter: blur(28px) saturate(140%);
+      -webkit-backdrop-filter: blur(28px) saturate(140%);
+      animation: slidein .35s cubic-bezier(0.34, 1.1, 0.64, 1);
+    }
+
+    @keyframes slidein {
+      from { transform: translateY(20px); opacity: 0 }
+      to   { transform: translateY(0);    opacity: 1 }
+    }
+
+    .toast.hiding { animation: slideout .25s ease forwards; }
+    @keyframes slideout {
+      to { transform: translateY(20px); opacity: 0 }
+    }
+
+    .header {
+      display: flex; align-items: center; gap: 10px;
+    }
+
+    .icon {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    .icon-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #fff;
+      animation: blink 1.4s infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    .title-block { flex: 1; min-width: 0; }
+    .title {
+      font-size: 12px; font-weight: 800;
+      color: #fff;
+      letter-spacing: .04em;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .version {
+      font-size: 10px;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+
+    .close-btn {
+      width: 22px; height: 22px;
+      border: none; border-radius: 6px;
+      background: transparent;
+      color: #64748b;
+      cursor: pointer;
+      font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .15s, color .15s;
+      flex-shrink: 0;
+    }
+    .close-btn:hover { background: rgba(255,255,255,.06); color: #e2e8f0; }
+
+    .body {
+      font-size: 11px;
+      color: #cbd5e1;
+      line-height: 1.45;
+    }
+
+    .actions { display: flex; gap: 10px; margin-top: 2px; }
+
+    .btn {
+      flex: 1;
+      padding: 10px 14px;
+      border: none; border-radius: 8px;
+      font-size: 11px; font-weight: 700;
+      letter-spacing: .04em;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s, background .15s;
+    }
+    .btn:active { transform: scale(.97); }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: #fff;
+    }
+    .btn-primary:hover { opacity: .9; }
+
+    .btn-secondary {
+      background: rgba(255,255,255,.04);
+      color: #94a3b8;
+      border: 1px solid rgba(255,255,255,.08);
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,.08); color: #cbd5e1; }
+  </style>
+</head>
+<body>
+  <div class="toast" id="toast">
+    <div class="header">
+      <div class="icon"><div class="icon-dot"></div></div>
+      <div class="title-block">
+        <div class="title">Mise à jour prête</div>
+        <div class="version" id="version">version inconnue</div>
+      </div>
+      <button class="close-btn" id="dismiss" title="Plus tard">✕</button>
+    </div>
+    <div class="body">Une nouvelle version a été téléchargée. Redémarre LiveChat pour l'installer.</div>
+    <div class="actions">
+      <button class="btn btn-secondary" id="later">Plus tard</button>
+      <button class="btn btn-primary"   id="restart">Redémarrer</button>
+    </div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron')
+
+    ipcRenderer.on('update-info', (event, info) => {
+      if (info && info.version) {
+        document.getElementById('version').textContent = 'v' + info.version
+      }
+    })
+
+    function dismiss() {
+      const toast = document.getElementById('toast')
+      toast.classList.add('hiding')
+      setTimeout(() => ipcRenderer.send('update-dismiss'), 240)
+    }
+
+    document.getElementById('restart').addEventListener('click', () => {
+      ipcRenderer.send('update-restart')
+    })
+    document.getElementById('dismiss').addEventListener('click', dismiss)
+    document.getElementById('later').addEventListener('click',   dismiss)
+  </script>
+</body>
+</html>

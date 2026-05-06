@@ -251,20 +251,6 @@
     </div>
   </div>
 
-  <!-- Serveur WebSocket -->
-  <div class="section">
-    <label>Adresse du serveur</label>
-    <input class="server-input" id="ws-host" type="text"
-           placeholder="host:port" autocomplete="off">
-  </div>
-
-  <!-- Token d'authentification -->
-  <div class="section">
-    <label>Token d'authentification</label>
-    <input class="server-input" id="ws-token" type="password"
-           placeholder="secret partagé avec le bot" autocomplete="off">
-  </div>
-
   <!-- Raccourci skip -->
   <div class="section">
     <label>Raccourci pour passer au suivant</label>
@@ -298,6 +284,7 @@
   <button class="btn-launch" id="btn-launch">Lancer l'overlay</button>
   <div id="status-msg" class="info"></div>
   <p class="shortcut-hint">Ctrl+Shift+Q pour fermer · Ctrl+Shift+P pour les paramètres</p>
+  <p class="shortcut-hint" id="version-line"></p>
 
   <script>
     const { ipcRenderer } = require('electron')
@@ -315,11 +302,10 @@
     const keyDisplay      = document.getElementById('key-display')
     const volumeInput     = document.getElementById('volume')
     const volumeValue     = document.getElementById('volume-value')
-    const wsHostInput     = document.getElementById('ws-host')
-    const wsTokenInput    = document.getElementById('ws-token')
     const statusMsg       = document.getElementById('status-msg')
     const btnLaunch       = document.getElementById('btn-launch')
     const autostartToggle = document.getElementById('autostart-toggle')
+    const versionLine     = document.getElementById('version-line')
 
     // ── Conversion key → Electron accelerator ───────────────────────────────
     function keyToAccelerator(key) {
@@ -344,7 +330,8 @@
     }
 
     // ── Réception des paramètres sauvegardés + liste des écrans ────────────
-    ipcRenderer.on('init', (event, { displays, primaryId, settings, autostart }) => {
+    ipcRenderer.on('init', (event, { displays, primaryId, settings, autostart, version }) => {
+      versionLine.textContent = version ? `LiveChat Overlay v${version}` : ''
       // Écrans
       displays.forEach((d, i) => {
         const opt = document.createElement('option')
@@ -392,15 +379,11 @@
         volumeValue.textContent = settings.volume + '%'
       }
 
-      // Restaurer adresse serveur
-      if (settings.wsHost)  wsHostInput.value  = settings.wsHost
-      if (settings.wsToken) wsTokenInput.value = settings.wsToken
-
       // Démarrage automatique (état réel depuis l'OS)
       autostartToggle.checked = autostart || false
 
       // Ajuster hauteur fenêtre selon mode restauré
-      ipcRenderer.send('resize-setup', selectedMode === 'small' ? 860 : 750)
+      ipcRenderer.send('resize-setup', selectedMode === 'small' ? 720 : 610)
     })
 
     // ── Sélection du mode ───────────────────────────────────────────────────
@@ -416,7 +399,7 @@
 
         const isSmall = selectedMode === 'small'
         cornerSection.style.display = isSmall ? 'block' : 'none'
-        ipcRenderer.send('resize-setup', isSmall ? 860 : 750)
+        ipcRenderer.send('resize-setup', isSmall ? 720 : 610)
       })
     })
 
@@ -472,64 +455,20 @@
       ipcRenderer.send('set-autostart', autostartToggle.checked)
     })
 
-    // ── Test connexion WebSocket ────────────────────────────────────────────
-    function testWsConnection(host, token) {
-      return new Promise((resolve, reject) => {
-        let ws
-        try {
-          ws = new WebSocket('ws://' + host, ['token.' + token])
-        } catch (e) {
-          reject('URL invalide')
-          return
-        }
-        const timeout = setTimeout(() => {
-          try { ws.close() } catch {}
-          reject('timeout (4s)')
-        }, 4000)
-        ws.onopen  = () => { clearTimeout(timeout); ws.close(); resolve() }
-        ws.onclose = (e) => {
-          clearTimeout(timeout)
-          if (e.code === 1008) reject('token rejeté par le serveur')
-        }
-        ws.onerror = () => { clearTimeout(timeout); reject('serveur inaccessible ou token rejeté') }
-      })
-    }
-
     function setStatus(msg, type) {
       statusMsg.textContent = msg
       statusMsg.className   = type  // 'ok' | 'error' | 'info'
     }
 
     // ── Lancement ───────────────────────────────────────────────────────────
-    btnLaunch.addEventListener('click', async () => {
-      const wsHost  = wsHostInput.value.trim()
-      const wsToken = wsTokenInput.value.trim()
-      if (!wsHost)  { setStatus('Adresse du serveur manquante', 'error'); return }
-      if (!wsToken) { setStatus("Token d'authentification manquant", 'error'); return }
-
-      btnLaunch.disabled    = true
-      btnLaunch.textContent = 'Connexion en cours...'
-      setStatus('', 'info')
-
-      try {
-        await testWsConnection(wsHost, wsToken)
-        setStatus('✓ Serveur accessible', 'ok')
-        setTimeout(() => {
-          ipcRenderer.send('launch-overlay', {
-            displayIndex: parseInt(select.value, 10),
-            mode:         selectedMode,
-            corner:       selectedMode === 'small' ? selectedCorner : 'bottom-right',
-            skipKey,
-            volume:       parseInt(volumeInput.value, 10),
-            wsHost,
-            wsToken
-          })
-        }, 400)
-      } catch (err) {
-        setStatus('✗ Erreur : ' + err, 'error')
-        btnLaunch.disabled    = false
-        btnLaunch.textContent = "Lancer l'overlay"
-      }
+    btnLaunch.addEventListener('click', () => {
+      ipcRenderer.send('launch-overlay', {
+        displayIndex: parseInt(select.value, 10),
+        mode:         selectedMode,
+        corner:       selectedMode === 'small' ? selectedCorner : 'bottom-right',
+        skipKey,
+        volume:       parseInt(volumeInput.value, 10)
+      })
     })
   </script>
 </body>
