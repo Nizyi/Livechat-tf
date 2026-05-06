@@ -96,14 +96,15 @@ function startBot(wss) {
     const attachment = message.attachments.first()
 
     // Ignorer si rien de valide
-    if (!rawText && !attachment) return
+    if (!rawText && !attachment && message.embeds.length === 0) return
 
     // ── Texte ─────────────────────────────────────────────────────────────────
-    const text = sanitizeText(rawText)
+    let text = sanitizeText(rawText)
 
     // ── Pièce jointe ──────────────────────────────────────────────────────────
-    let mediaUrl  = null
-    let mediaType = 'text'
+    let mediaUrl     = null
+    let mediaType    = 'text'
+    let contentType  = null
 
     if (attachment) {
       const reason = rejectReason(attachment)
@@ -112,12 +113,42 @@ function startBot(wss) {
         console.warn(`[Sécurité] Fichier rejeté — ${reason} (envoyé par ${message.author.username})`)
         // On continue quand même s'il y a du texte
       } else {
-        mediaType = getMediaType(attachment)
-        mediaUrl  = attachment.url
+        mediaType   = getMediaType(attachment)
+        mediaUrl    = attachment.url
+        contentType = attachment.contentType || null
       }
     }
 
-    // Si rien à envoyer (fichier rejeté ET pas de texte)
+    // ── Embed GIF (Discord GIF picker — Tenor/Giphy) ──────────────────────────
+    // Discord convertit les GIFs du picker en embed "gifv".
+    // On préfère le thumbnail (image GIF animé) plutôt que la vidéo MP4
+    // car plus fiable hors CDN Discord.
+    if (!mediaUrl) {
+      for (const embed of message.embeds) {
+        if (!embed.video && !embed.thumbnail) continue
+
+        // URLs directes en priorité — proxyURL images-ext nécessite session Discord (403)
+        // Priorité 1 : video url directe (MP4 media.tenor.com)
+        if (embed.video?.url) {
+          mediaUrl    = embed.video.url
+          mediaType   = 'video'
+          contentType = 'video/mp4'
+        // Priorité 2 : thumbnail url directe (GIF animé media.tenor.com)
+        } else if (embed.thumbnail?.url) {
+          mediaUrl    = embed.thumbnail.url
+          mediaType   = 'image'
+          contentType = 'image/gif'
+        }
+
+        if (mediaUrl) {
+          // Si le texte est uniquement l'URL Tenor, l'effacer
+          if (text && embed.url && text.trim() === embed.url.trim()) text = null
+          break
+        }
+      }
+    }
+
+    // Si rien à envoyer (fichier rejeté ET pas de texte ET pas d'embed GIF)
     if (!text && !mediaUrl) return
 
     // ── Payload ───────────────────────────────────────────────────────────────
@@ -127,7 +158,8 @@ function startBot(wss) {
       text,
       url:         mediaUrl,
       type:        mediaUrl ? mediaType : 'text',
-      contentType: attachment?.contentType || null,
+      contentType,
+      isGif:       mediaType === 'video' && message.embeds.some(e => e.video),
       timestamp:   Date.now()
     }
 

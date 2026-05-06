@@ -468,7 +468,8 @@
     'cdn.discordapp.com',
     'media.discordapp.net',
     'images-ext-1.discordapp.net',
-    'images-ext-2.discordapp.net'
+    'images-ext-2.discordapp.net',
+    'media.tenor.com'
   ]
 
   // Types MIME acceptés
@@ -591,7 +592,8 @@
       avatarUrl: isAllowedUrl(data.avatarUrl) ? data.avatarUrl : null,
       text:      sanitizeText(data.text),
       url:       null,
-      type:      'text'
+      type:      'text',
+      isGif:     !!data.isGif
     }
 
     // Valider l'URL média
@@ -694,7 +696,12 @@
     vid.src         = data.url
 
     vid.addEventListener('loadedmetadata', () => {
-      const durMs = Math.min(Math.max(vid.duration * 1000, 1000), VIDEO_MAX_MS)
+      // GIF Tenor : boucler + durée fixe comme une image
+      const durMs = data.isGif
+        ? IMG_DISPLAY_MS
+        : Math.min(Math.max(vid.duration * 1000, 1000), VIDEO_MAX_MS)
+
+      if (data.isGif) vid.loop = true
 
       if (data.text) {
         mediaGradient.style.display = 'block'
@@ -703,11 +710,10 @@
       }
 
       startProgress(durMs)
-      // Timer = durée réelle de la vidéo
       currentTimer = setTimeout(onDone, durMs)
     })
 
-    // La vidéo a fini naturellement → on passe au suivant immédiatement
+    // La vidéo a fini naturellement → on passe au suivant (ignoré si GIF car loop=true)
     vid.addEventListener('ended', () => {
       clearTimeout(currentTimer)
       onDone()
