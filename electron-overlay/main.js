@@ -22,7 +22,8 @@ const DEFAULT_SETTINGS = {
   corner:       'bottom-right',
   skipKey:      'PageDown',
   volume:       50,
-  wsHost:       'livechat.tidic.fr:3010'
+  wsHost:       '',
+  wsToken:      ''
 }
 
 let LOG_PATH = null
@@ -31,6 +32,43 @@ function writeLog(level, msg) {
   if (!LOG_PATH) return
   const line = `[${new Date().toISOString()}] [${level}] ${msg}\n`
   try { fs.appendFileSync(LOG_PATH, line) } catch {}
+}
+
+function logUpdate(msg) {
+  console.log('[updater]', msg)
+  writeLog('UPDATE', msg)
+}
+
+function setupAutoUpdater() {
+  autoUpdater.autoDownload          = true
+  autoUpdater.autoInstallOnAppQuit  = true
+  autoUpdater.logger = {
+    info:  m => logUpdate(typeof m === 'string' ? m : JSON.stringify(m)),
+    warn:  m => logUpdate('WARN ' + (typeof m === 'string' ? m : JSON.stringify(m))),
+    error: m => logUpdate('ERROR ' + (m && m.stack ? m.stack : String(m))),
+    debug: () => {}
+  }
+
+  autoUpdater.on('checking-for-update', () => {
+    logUpdate(`Vérification mises à jour (version actuelle ${app.getVersion()})…`)
+  })
+  autoUpdater.on('update-available', info => {
+    logUpdate(`Update DISPONIBLE → ${info.version} (release ${info.releaseDate || '?'}) — téléchargement…`)
+  })
+  autoUpdater.on('update-not-available', info => {
+    logUpdate(`Aucune update — déjà sur ${info.version || app.getVersion()}`)
+  })
+  autoUpdater.on('download-progress', p => {
+    const pct  = p.percent ? p.percent.toFixed(1) : '?'
+    const mbps = p.bytesPerSecond ? (p.bytesPerSecond / 1024 / 1024).toFixed(2) : '?'
+    logUpdate(`DL ${pct}% (${mbps} MB/s) — ${p.transferred}/${p.total}`)
+  })
+  autoUpdater.on('update-downloaded', info => {
+    logUpdate(`Update TÉLÉCHARGÉE → ${info.version} — sera installée à la fermeture`)
+  })
+  autoUpdater.on('error', err => {
+    logUpdate('ERREUR ' + (err && err.stack ? err.stack : String(err)))
+  })
 }
 
 let settings = { ...DEFAULT_SETTINGS }
@@ -103,7 +141,7 @@ function createSetupWindow() {
 }
 
 // ── Fenêtre overlay ───────────────────────────────────────────────────────────
-function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100, wsHost = 'livechat.tidic.fr:3010') {
+function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100, wsHost = '', wsToken = '') {
   const displays = screen.getAllDisplays()
   const display  = displays[displayIndex] || displays[0]
   const { x, y, width, height } = display.bounds
@@ -127,14 +165,14 @@ function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100
   overlayWin.setIgnoreMouseEvents(true, { forward: true })
   overlayWin.setAlwaysOnTop(true, 'screen-saver')
 
-  overlayWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode, corner, volume, wsHost } })
+  overlayWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode, corner, volume, wsHost, wsToken } })
   overlayWin.on('closed', () => { overlayWin = null })
   attachRendererLogger(overlayWin)
 }
 
 // ── IPC : la fenêtre setup envoie les choix ──────────────────────────────────
-ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volume, wsHost }) => {
-  saveSettings({ displayIndex, mode, corner, skipKey, volume, wsHost })
+ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volume, wsHost, wsToken }) => {
+  saveSettings({ displayIndex, mode, corner, skipKey, volume, wsHost, wsToken })
   registerSkipShortcut(skipKey)
 
   // destroy() synchrone — évite que le callback 'closed' écrase la nouvelle ref
@@ -143,7 +181,7 @@ ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volu
     overlayWin.destroy()
     overlayWin = null
   }
-  createOverlay(displayIndex, mode, corner, volume, wsHost)
+  createOverlay(displayIndex, mode, corner, volume, wsHost, wsToken)
   if (setupWin) setupWin.close()
 })
 
@@ -169,7 +207,7 @@ function attachRendererLogger(win) {
       overlayWin = null
       setTimeout(() => {
         const s = settings
-        createOverlay(s.displayIndex, s.mode, s.corner, s.volume, s.wsHost)
+        createOverlay(s.displayIndex, s.mode, s.corner, s.volume, s.wsHost, s.wsToken)
       }, 2000)
     }
   })
@@ -198,7 +236,8 @@ app.whenReady().then(() => {
   process.on('uncaughtException',    err    => writeLog('CRASH',   err.stack || String(err)))
   process.on('unhandledRejection',   reason => writeLog('CRASH',   'UnhandledRejection: ' + reason))
 
-  autoUpdater.checkForUpdatesAndNotify()
+  setupAutoUpdater()
+  autoUpdater.checkForUpdatesAndNotify().catch(err => logUpdate('checkForUpdates rejected: ' + err))
   loadSettings()
   createSetupWindow()
   createTray()

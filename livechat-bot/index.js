@@ -9,7 +9,7 @@ const { startWsServer } = require('./wsServer')
 const { startBot }      = require('./bot')
 
 // Vérifications de base
-const requiredEnv = ['TOKEN', 'CHANNEL_ID']
+const requiredEnv = ['TOKEN', 'CHANNEL_ID', 'WS_TOKEN']
 const missing = requiredEnv.filter((k) => !process.env[k])
 if (missing.length > 0) {
   console.error(`[Config] Variables manquantes dans .env : ${missing.join(', ')}`)
@@ -17,10 +17,16 @@ if (missing.length > 0) {
   process.exit(1)
 }
 
+const WS_TOKEN = process.env.WS_TOKEN
+if (WS_TOKEN.length < 16) {
+  console.error('[Config] WS_TOKEN doit faire au moins 16 caractères (recommandé : 32+ aléatoires).')
+  process.exit(1)
+}
+
 const PORT = parseInt(process.env.PORT || '8080', 10)
 
 // 1. Démarrer le serveur WebSocket
-const wss = startWsServer(PORT)
+const wss = startWsServer(PORT, WS_TOKEN)
 
 // 2. Démarrer le bot Discord (qui utilisera le wss pour broadcaster)
 startBot(wss)

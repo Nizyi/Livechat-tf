@@ -456,7 +456,9 @@
   // ═══════════════════════════════════════════════════════════════════════════
   // Configuration
   // ═══════════════════════════════════════════════════════════════════════════
-  const WS_URL        = params.get('wsHost') ? 'ws://' + params.get('wsHost') : 'ws://livechat.tidic.fr:3010'
+  const WS_HOST       = params.get('wsHost')  || ''
+  const WS_TOKEN      = params.get('wsToken') || ''
+  const WS_URL        = WS_HOST ? 'ws://' + WS_HOST : ''
   const RECONNECT_MS  = 3000
   const IMG_DISPLAY_MS = 9000    // durée fixe pour les images
   const VIDEO_MAX_MS   = 15000   // durée max pour les vidéos
@@ -783,10 +785,20 @@
   // WebSocket — connexion avec reconnexion auto (un seul timer à la fois)
   // ═══════════════════════════════════════════════════════════════════════════
   let wsScheduled = false
+  let authRejected = false
 
   function connectWS() {
     wsScheduled = false
-    const ws = new WebSocket(WS_URL)
+    if (!WS_URL || !WS_TOKEN) {
+      console.error('[WS] Configuration manquante (host ou token absent) — ouvre les paramètres (Ctrl+Shift+P)')
+      return
+    }
+    if (authRejected) {
+      console.error('[WS] Token rejeté — reconnexion désactivée. Vérifie ta config (Ctrl+Shift+P).')
+      return
+    }
+
+    const ws = new WebSocket(WS_URL, ['token.' + WS_TOKEN])
 
     ws.onopen = () => {
       console.log('[WS] Connecté au bot')
@@ -806,7 +818,12 @@
       }
     }
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      if (event.code === 1008) {
+        authRejected = true
+        console.error('[WS] Token rejeté par le serveur — pas de reconnexion. Ouvre les paramètres (Ctrl+Shift+P).')
+        return
+      }
       console.log('[WS] Déconnecté, reconnexion dans', RECONNECT_MS / 1000, 's…')
       if (!wsScheduled) {
         wsScheduled = true

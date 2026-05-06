@@ -152,4 +152,13 @@ npm start
 TOKEN=token_du_bot_discord
 CHANNEL_ID=id_du_salon_a_surveiller
 PORT=8080
+WS_TOKEN=secret_partage_avec_overlay_min_16_chars
 ```
+
+`WS_TOKEN` est requis. Le serveur WS rejette toute connexion sans le bon token
+(transmis par l'overlay via le sous-protocole `token.<WS_TOKEN>`).
+Génère via : `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+
+L'overlay demande l'adresse du serveur **et** le token au lancement (setup.html).
+Aucune valeur n'est pré-remplie : à chaque nouvelle install ou réinit settings,
+le user doit saisir host + token avant que `connectWS()` ne tente de se connecter.
