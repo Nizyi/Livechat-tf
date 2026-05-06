@@ -428,6 +428,7 @@
   const WS_URL        = 'ws://localhost:8080'
   const RECONNECT_MS  = 3000
   const IMG_DISPLAY_MS = 9000    // durée fixe pour les images
+  const VIDEO_MAX_MS   = 15000   // durée max pour les vidéos
   const BETWEEN_MS     = 400     // pause entre deux cartes
 
   // URLs Discord CDN autorisées
@@ -672,7 +673,7 @@
     vid.src         = data.url
 
     vid.addEventListener('loadedmetadata', () => {
-      const durMs = Math.max(vid.duration * 1000, 1000)
+      const durMs = Math.min(Math.max(vid.duration * 1000, 1000), VIDEO_MAX_MS)
 
       if (data.text) {
         mediaGradient.style.display = 'block'
