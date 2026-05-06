@@ -148,6 +148,33 @@
     }
     .server-input:focus { border-color: #6366f1; }
 
+    /* ── Démarrage Windows ──────────────────────────────────────────────── */
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px;
+      background: #1e1e2a; border: 1.5px solid #2d2d3f;
+      border-radius: 10px;
+    }
+    .toggle-desc { font-size: 13px; color: #e2e8f0; }
+
+    .toggle-switch { position: relative; width: 38px; height: 20px; flex-shrink: 0; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; inset: 0;
+      background: #2d2d3f; border-radius: 999px;
+      cursor: pointer; transition: background .2s;
+    }
+    .toggle-slider::before {
+      content: ''; position: absolute;
+      width: 14px; height: 14px; left: 3px; top: 3px;
+      background: #94a3b8; border-radius: 50%;
+      transition: transform .2s, background .2s;
+    }
+    .toggle-switch input:checked + .toggle-slider { background: #6366f1; }
+    .toggle-switch input:checked + .toggle-slider::before {
+      transform: translateX(18px); background: #fff;
+    }
+
     /* ── Status connexion ───────────────────────────────────────────────── */
     #status-msg {
       text-align: center; font-size: 11px; font-weight: 600;
@@ -244,8 +271,20 @@
   <div class="section">
     <label>Volume des vidéos</label>
     <div class="volume-row">
-      <input type="range" id="volume" min="0" max="100" value="100">
-      <span class="volume-value" id="volume-value">100%</span>
+      <input type="range" id="volume" min="0" max="100" value="50">
+      <span class="volume-value" id="volume-value">50%</span>
+    </div>
+  </div>
+
+  <!-- Démarrage avec Windows -->
+  <div class="section">
+    <label>Démarrage automatique</label>
+    <div class="toggle-row">
+      <span class="toggle-desc">Lancer avec Windows</span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="autostart-toggle">
+        <span class="toggle-slider"></span>
+      </label>
     </div>
   </div>
 
@@ -262,16 +301,17 @@
     let skipKey        = 'PageDown'
     let captureMode    = false
 
-    const select        = document.getElementById('screen-select')
-    const cornerSection = document.getElementById('corner-section')
-    const keyCapture    = document.getElementById('key-capture')
-    const keyHint       = document.getElementById('key-hint')
-    const keyDisplay    = document.getElementById('key-display')
-    const volumeInput   = document.getElementById('volume')
-    const volumeValue   = document.getElementById('volume-value')
-    const wsHostInput   = document.getElementById('ws-host')
-    const statusMsg     = document.getElementById('status-msg')
-    const btnLaunch     = document.getElementById('btn-launch')
+    const select          = document.getElementById('screen-select')
+    const cornerSection   = document.getElementById('corner-section')
+    const keyCapture      = document.getElementById('key-capture')
+    const keyHint         = document.getElementById('key-hint')
+    const keyDisplay      = document.getElementById('key-display')
+    const volumeInput     = document.getElementById('volume')
+    const volumeValue     = document.getElementById('volume-value')
+    const wsHostInput     = document.getElementById('ws-host')
+    const statusMsg       = document.getElementById('status-msg')
+    const btnLaunch       = document.getElementById('btn-launch')
+    const autostartToggle = document.getElementById('autostart-toggle')
 
     // ── Conversion key → Electron accelerator ───────────────────────────────
     function keyToAccelerator(key) {
@@ -296,7 +336,7 @@
     }
 
     // ── Réception des paramètres sauvegardés + liste des écrans ────────────
-    ipcRenderer.on('init', (event, { displays, primaryId, settings }) => {
+    ipcRenderer.on('init', (event, { displays, primaryId, settings, autostart }) => {
       // Écrans
       displays.forEach((d, i) => {
         const opt = document.createElement('option')
@@ -346,6 +386,12 @@
 
       // Restaurer adresse serveur
       if (settings.wsHost) wsHostInput.value = settings.wsHost
+
+      // Démarrage automatique (état réel depuis l'OS)
+      autostartToggle.checked = autostart || false
+
+      // Ajuster hauteur fenêtre selon mode restauré
+      ipcRenderer.send('resize-setup', selectedMode === 'small' ? 860 : 750)
     })
 
     // ── Sélection du mode ───────────────────────────────────────────────────
@@ -361,7 +407,7 @@
 
         const isSmall = selectedMode === 'small'
         cornerSection.style.display = isSmall ? 'block' : 'none'
-        ipcRenderer.send('resize-setup', isSmall ? 790 : 680)
+        ipcRenderer.send('resize-setup', isSmall ? 860 : 750)
       })
     })
 
@@ -410,6 +456,11 @@
     // ── Volume ──────────────────────────────────────────────────────────────
     volumeInput.addEventListener('input', () => {
       volumeValue.textContent = volumeInput.value + '%'
+    })
+
+    // ── Démarrage avec Windows ──────────────────────────────────────────────
+    autostartToggle.addEventListener('change', () => {
+      ipcRenderer.send('set-autostart', autostartToggle.checked)
     })
 
     // ── Test connexion WebSocket ────────────────────────────────────────────

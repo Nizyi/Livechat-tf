@@ -6,6 +6,7 @@
 const { app, BrowserWindow, screen, globalShortcut, ipcMain, Tray, Menu, nativeImage } = require('electron')
 const path = require('path')
 const fs   = require('fs')
+const { autoUpdater } = require('electron-updater')
 
 let setupWin        = null
 let overlayWin      = null
@@ -13,14 +14,23 @@ let tray            = null
 let registeredSkipKey = null
 
 // ── Persistence des paramètres ────────────────────────────────────────────────
-const SETTINGS_PATH = path.join(__dirname, 'settings.json')
+// Initialisé dans app.whenReady() — app.getPath() indisponible avant
+let SETTINGS_PATH = null
 const DEFAULT_SETTINGS = {
   displayIndex: 0,
   mode:         'small',
   corner:       'bottom-right',
   skipKey:      'PageDown',
-  volume:       100,
+  volume:       50,
   wsHost:       'livechat.tidic.fr:3010'
+}
+
+let LOG_PATH = null
+
+function writeLog(level, msg) {
+  if (!LOG_PATH) return
+  const line = `[${new Date().toISOString()}] [${level}] ${msg}\n`
+  try { fs.appendFileSync(LOG_PATH, line) } catch {}
 }
 
 let settings = { ...DEFAULT_SETTINGS }
@@ -68,7 +78,7 @@ function createSetupWindow() {
 
   setupWin = new BrowserWindow({
     width:     460,
-    height:    790,   // mode petit par défaut (coin + skip + volume + serveur)
+    height:    860,   // mode petit par défaut (coin + skip + volume + serveur + autostart)
     resizable: false,
     frame:     true,
     center:    true,
@@ -83,10 +93,10 @@ function createSetupWindow() {
   setupWin.loadFile(path.join(__dirname, 'setup.html'))
 
   setupWin.webContents.on('did-finish-load', () => {
-    const displays  = screen.getAllDisplays()
-    const primaryId = screen.getPrimaryDisplay().id
-    // Envoi unique avec displays + paramètres sauvegardés
-    setupWin.webContents.send('init', { displays, primaryId, settings })
+    const displays      = screen.getAllDisplays()
+    const primaryId     = screen.getPrimaryDisplay().id
+    const autostartOn   = app.getLoginItemSettings().openAtLogin
+    setupWin.webContents.send('init', { displays, primaryId, settings, autostart: autostartOn })
   })
 
   setupWin.on('closed', () => { setupWin = null })
@@ -119,6 +129,7 @@ function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100
 
   overlayWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode, corner, volume, wsHost } })
   overlayWin.on('closed', () => { overlayWin = null })
+  attachRendererLogger(overlayWin)
 }
 
 // ── IPC : la fenêtre setup envoie les choix ──────────────────────────────────
@@ -141,6 +152,29 @@ ipcMain.on('resize-setup', (event, height) => {
   if (setupWin) setupWin.setSize(460, height)
 })
 
+// ── IPC : lancement avec Windows ─────────────────────────────────────────────
+ipcMain.on('set-autostart', (event, enabled) => {
+  app.setLoginItemSettings({ openAtLogin: !!enabled })
+})
+
+// ── Capture des erreurs renderer ──────────────────────────────────────────────
+function attachRendererLogger(win) {
+  win.webContents.on('console-message', (event, level, message) => {
+    if (level >= 2) writeLog('RENDERER', message)
+  })
+  win.webContents.on('render-process-gone', (event, details) => {
+    writeLog('CRASH', `Renderer gone: ${details.reason}`)
+    // Relance l'overlay si c'était lui
+    if (win === overlayWin) {
+      overlayWin = null
+      setTimeout(() => {
+        const s = settings
+        createOverlay(s.displayIndex, s.mode, s.corner, s.volume, s.wsHost)
+      }, 2000)
+    }
+  })
+}
+
 // ── Icône zone de notification (system tray) ──────────────────────────────────
 function createTray() {
   const icon = nativeImage.createFromPath(path.join(__dirname, 'logo.jpg'))
@@ -159,6 +193,12 @@ function createTray() {
 
 // ── Cycle de vie ──────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
+  SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json')
+  LOG_PATH      = path.join(app.getPath('userData'), 'error.log')
+  process.on('uncaughtException',    err    => writeLog('CRASH',   err.stack || String(err)))
+  process.on('unhandledRejection',   reason => writeLog('CRASH',   'UnhandledRejection: ' + reason))
+
+  autoUpdater.checkForUpdatesAndNotify()
   loadSettings()
   createSetupWindow()
   createTray()

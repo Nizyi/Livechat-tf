@@ -1,23 +1,39 @@
 {
   "name": "livechat-overlay",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Overlay transparent LiveChat – affiche les contenus reçus du bot Discord",
+  "author": "Nizyi",
   "main": "main.js",
-  
+
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Nizyi/Livechat-tf.git"
+  },
+
   "build": {
     "appId": "com.livechat.overlay",
+    "publish": {
+      "provider": "github",
+      "owner": "Nizyi",
+      "repo": "Livechat-tf"
+    },
     "win": {
-      "target": "dir",
+      "target": "nsis",
       "icon": "logo.jpg"
     }
   },
+
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder"
   },
-  
-  
+
+  "dependencies": {
+    "electron-updater": "^6.1.0"
+  },
+
   "devDependencies": {
+    "electron": "^30.0.0",
     "electron-builder": "^26.8.1"
   }
 }

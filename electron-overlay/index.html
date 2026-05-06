@@ -260,8 +260,8 @@
       width: 42px; height: 42px; font-size: 17px;
     }
 
-    body.mode-small .username  { font-size: 13px; }
-    body.mode-small .msg-text  { font-size: 14px; }
+    body.mode-small .username  { font-size: 15px; }
+    body.mode-small .msg-text  { font-size: 18px; }
 
     body.mode-small .media-zone img,
     body.mode-small .media-zone video {
@@ -340,9 +340,9 @@
       width: 38px; height: 38px; font-size: 15px; border-radius: 8px;
     }
 
-    body.mode-large .username    { font-size: 13px; }
+    body.mode-large .username    { font-size: 15px; }
     body.mode-large .live-badge  { font-size: 8px; padding: 3px 9px; }
-    body.mode-large .msg-text    { font-size: 22px; line-height: 1.5; }
+    body.mode-large .msg-text    { font-size: 28px; line-height: 1.5; }
     body.mode-large .accent-bar  { width: 52px; height: 5px; }
     body.mode-large .text-on-media { padding: 22px 24px 28px; }
     body.mode-large .text-zone   { padding: 20px 24px 24px; }
@@ -439,13 +439,17 @@
   const MODE    = params.get('mode') === 'large' ? 'large' : 'small'
   const CORNERS = ['bottom-right', 'bottom-left', 'top-right', 'top-left']
   const CORNER  = CORNERS.includes(params.get('corner')) ? params.get('corner') : 'bottom-right'
-  const VOLUME  = Math.max(0, Math.min(100, parseInt(params.get('volume')) || 100)) / 100
+  const VOLUME  = Math.max(0, Math.min(100, parseInt(params.get('volume')) || 50)) / 100
   document.body.classList.add('mode-' + MODE)
   if (MODE === 'small') document.body.classList.add('corner-' + CORNER)
 
   // Skip raccourci (PageDown ou custom) → passe au suivant immédiatement
   ipcRenderer.on('skip', () => {
+    processing = false          // lève le verrou pour permettre onDone
     clearTimeout(currentTimer)
+    clearTimeout(doneTimer)
+    currentTimer = null
+    doneTimer    = null
     onDone()
   })
 
@@ -457,6 +461,7 @@
   const IMG_DISPLAY_MS = 9000    // durée fixe pour les images
   const VIDEO_MAX_MS   = 15000   // durée max pour les vidéos
   const BETWEEN_MS     = 400     // pause entre deux cartes
+  const MAX_QUEUE      = 20      // file d'attente bornée (évite fuite mémoire)
 
   // URLs Discord CDN autorisées
   const ALLOWED_CDN = [
@@ -497,14 +502,18 @@
   const queue      = []
   let isShowing    = false
   let currentTimer = null
+  let doneTimer    = null
+  let processing   = false   // verrou anti-réentrance pour onDone
 
   function enqueue(data) {
+    if (queue.length >= MAX_QUEUE) queue.shift()  // drop oldest si file pleine
     queue.push(data)
     updateBadge()
     if (!isShowing) processNext()
   }
 
   function processNext() {
+    processing = false
     if (queue.length === 0) {
       isShowing = false
       hideCard()
@@ -517,11 +526,15 @@
   }
 
   function onDone() {
+    if (processing) return   // déjà en transition, ignorer
+    processing = true
     clearTimeout(currentTimer)
+    clearTimeout(doneTimer)
+    currentTimer = null
     stopAllMedia()
     card.classList.remove('visible')
     if (MODE === 'large') hud.classList.remove('visible')
-    setTimeout(processNext, BETWEEN_MS)
+    doneTimer = setTimeout(processNext, BETWEEN_MS)
   }
 
   function updateBadge() {
@@ -751,9 +764,22 @@
   setInterval(updateClock, 1000)
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // WebSocket — connexion avec reconnexion auto
+  // Gestion des erreurs non catchées (aide au debug)
   // ═══════════════════════════════════════════════════════════════════════════
+  window.onerror = (msg, src, line, col, err) => {
+    console.error('[Renderer] Uncaught:', msg, 'at', src + ':' + line, err)
+  }
+  window.onunhandledrejection = (e) => {
+    console.error('[Renderer] Unhandled rejection:', e.reason)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WebSocket — connexion avec reconnexion auto (un seul timer à la fois)
+  // ═══════════════════════════════════════════════════════════════════════════
+  let wsScheduled = false
+
   function connectWS() {
+    wsScheduled = false
     const ws = new WebSocket(WS_URL)
 
     ws.onopen = () => {
@@ -776,10 +802,14 @@
 
     ws.onclose = () => {
       console.log('[WS] Déconnecté, reconnexion dans', RECONNECT_MS / 1000, 's…')
-      setTimeout(connectWS, RECONNECT_MS)
+      if (!wsScheduled) {
+        wsScheduled = true
+        setTimeout(connectWS, RECONNECT_MS)
+      }
     }
 
     ws.onerror = (e) => console.error('[WS] Erreur :', e)
+    // onerror est toujours suivi de onclose → pas de double reconnect
   }
 
   connectWS()
