@@ -4,5 +4,5 @@
   "corner": "bottom-right",
   "skipKey": "PageDown",
   "volume": 100,
-  "wsHost": "localhost:8080"
+  "wsHost": "livechat.tidic.fr"
 }
