@@ -32,6 +32,23 @@ const COOLDOWN_MS = parseInt(process.env.COOLDOWN_MS || '5000', 10)
 // Durée avant suppression automatique du message d'avertissement (ms)
 const WARN_TTL_MS = 5000
 
+// Délai d'attente avant traitement quand le message contient une URL — laisse
+// à Discord le temps de générer l'embed (Tenor, image directe, etc.)
+const EMBED_WAIT_MS = 1500
+const URL_REGEX     = /https?:\/\/\S+/i
+
+// Devine le contentType à partir de l'extension de l'URL (fallback)
+function guessMimeFromUrl(url) {
+  const u = url.toLowerCase().split('?')[0]
+  if (u.endsWith('.png'))  return 'image/png'
+  if (u.endsWith('.jpg') || u.endsWith('.jpeg')) return 'image/jpeg'
+  if (u.endsWith('.gif'))  return 'image/gif'
+  if (u.endsWith('.webp')) return 'image/webp'
+  if (u.endsWith('.mp4'))  return 'video/mp4'
+  if (u.endsWith('.webm')) return 'video/webm'
+  return null
+}
+
 // userId → timestamp du dernier message accepté
 const lastSent = new Map()
 
@@ -103,12 +120,24 @@ function startBot(wss) {
     console.log(`[Bot] Surveillance salon : ${process.env.CHANNEL_ID}`)
   })
 
-  client.on('messageCreate', async (message) => {
+  client.on('messageCreate', async (rawMessage) => {
     // Ignorer les bots
-    if (message.author.bot) return
+    if (rawMessage.author.bot) return
 
     // Ignorer les autres salons
-    if (message.channelId !== process.env.CHANNEL_ID) return
+    if (rawMessage.channelId !== process.env.CHANNEL_ID) return
+
+    // Si le message n'a pas de pièce jointe mais contient une URL, on attend
+    // que Discord génère l'embed (Tenor MP4, image directe, etc.) avant de traiter
+    let message = rawMessage
+    if (rawMessage.attachments.size === 0 && URL_REGEX.test(rawMessage.content || '')) {
+      await new Promise(r => setTimeout(r, EMBED_WAIT_MS))
+      try {
+        message = await rawMessage.channel.messages.fetch(rawMessage.id)
+      } catch {
+        return  // message supprimé pendant l'attente
+      }
+    }
 
     const rawText    = message.content
     const attachment = message.attachments.first()
@@ -137,31 +166,48 @@ function startBot(wss) {
       }
     }
 
-    // ── Embed GIF (Discord GIF picker — Tenor/Giphy) ──────────────────────────
-    // Discord convertit les GIFs du picker en embed "gifv".
-    // On préfère le thumbnail (image GIF animé) plutôt que la vidéo MP4
-    // car plus fiable hors CDN Discord.
+    // ── Embed (Discord GIF picker, Tenor/Giphy, image/vidéo via URL) ──────────
+    // Discord génère un embed quand le message contient une URL.
+    // On lit video > image > thumbnail dans cet ordre de priorité.
     if (!mediaUrl) {
       for (const embed of message.embeds) {
-        if (!embed.video && !embed.thumbnail) continue
+        if (!embed.video && !embed.image && !embed.thumbnail) continue
 
-        // URLs directes en priorité — proxyURL images-ext nécessite session Discord (403)
-        // Priorité 1 : video url directe (MP4 media.tenor.com)
         if (embed.video?.url) {
           mediaUrl    = embed.video.url
           mediaType   = 'video'
-          contentType = 'video/mp4'
-        // Priorité 2 : thumbnail url directe (GIF animé media.tenor.com)
+          contentType = guessMimeFromUrl(mediaUrl) || 'video/mp4'
+        } else if (embed.image?.url) {
+          mediaUrl    = embed.image.url
+          mediaType   = 'image'
+          contentType = guessMimeFromUrl(mediaUrl) || 'image/png'
         } else if (embed.thumbnail?.url) {
           mediaUrl    = embed.thumbnail.url
           mediaType   = 'image'
-          contentType = 'image/gif'
+          contentType = guessMimeFromUrl(mediaUrl) || 'image/gif'
         }
 
         if (mediaUrl) {
-          // Si le texte est uniquement l'URL Tenor, l'effacer
+          // Si le texte est uniquement l'URL d'origine de l'embed, l'effacer
           if (text && embed.url && text.trim() === embed.url.trim()) text = null
           break
+        }
+      }
+    }
+
+    // ── Fallback : URL d'image/vidéo directe dans le texte (sans embed) ──────
+    // Couvre les cas où Discord ne génère pas d'embed (CDN Discord par exemple).
+    if (!mediaUrl && text) {
+      const urlMatch = text.match(URL_REGEX)
+      if (urlMatch) {
+        const candidate = urlMatch[0]
+        const mime = guessMimeFromUrl(candidate)
+        if (mime) {
+          mediaUrl    = candidate
+          mediaType   = mime.startsWith('video/') ? 'video' : 'image'
+          contentType = mime
+          // Si le texte EST cette URL seule, on l'efface
+          if (text.trim() === candidate) text = null
         }
       }
     }
