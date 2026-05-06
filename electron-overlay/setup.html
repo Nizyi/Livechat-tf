@@ -46,6 +46,41 @@
 
     .section { margin-bottom: 20px; }
 
+    /* ── Onglets ───────────────────────────────────────────────────────── */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 20px;
+      padding: 4px;
+      background: #161620;
+      border: 1px solid #2d2d3f;
+      border-radius: 10px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 8px 10px;
+      background: transparent;
+      border: none;
+      border-radius: 7px;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      color: #64748b;
+      cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+    .tab-btn:hover  { color: #cbd5e1; }
+    .tab-btn.active {
+      background: linear-gradient(135deg, rgba(99,102,241,.18), rgba(139,92,246,.18));
+      color: #e2e8f0;
+      box-shadow: inset 0 0 0 1px rgba(99,102,241,.3);
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
     /* ── Sélecteur d'écran ──────────────────────────────────────────────── */
     select {
       width: 100%; padding: 10px 14px;
@@ -217,86 +252,108 @@
     </div>
   </div>
 
-  <!-- Écran cible -->
-  <div class="section">
-    <label>Écran d'affichage</label>
-    <div class="select-wrap">
-      <select id="screen-select"></select>
-      <span class="select-arrow">▼</span>
-    </div>
+  <!-- Onglets -->
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="display">Affichage</button>
+    <button class="tab-btn"        data-tab="control">Contrôles</button>
+    <button class="tab-btn"        data-tab="system" >Système</button>
   </div>
 
-  <!-- Mode d'affichage -->
-  <div class="section">
-    <label>Mode d'affichage</label>
-    <div class="mode-grid">
-      <div class="mode-card active" data-mode="small">
-        <div class="check">✓</div>
-        <div class="mode-icon">🪟</div>
-        <div class="mode-title">Petit</div>
-        <div class="mode-desc">Carte en coin d'écran, discrète</div>
-      </div>
-      <div class="mode-card" data-mode="large">
-        <div class="check"></div>
-        <div class="mode-icon">🖥️</div>
-        <div class="mode-title">Grand</div>
-        <div class="mode-desc">Carte centrale, style TikTok</div>
+  <!-- ─── Onglet Affichage ───────────────────────────────────────────── -->
+  <div class="tab-panel active" id="tab-display">
+
+    <!-- Écran cible -->
+    <div class="section">
+      <label>Écran d'affichage</label>
+      <div class="select-wrap">
+        <select id="screen-select"></select>
+        <span class="select-arrow">▼</span>
       </div>
     </div>
+
+    <!-- Mode d'affichage -->
+    <div class="section">
+      <label>Mode d'affichage</label>
+      <div class="mode-grid">
+        <div class="mode-card active" data-mode="small">
+          <div class="check">✓</div>
+          <div class="mode-icon">🪟</div>
+          <div class="mode-title">Petit</div>
+          <div class="mode-desc">Carte en coin d'écran, discrète</div>
+        </div>
+        <div class="mode-card" data-mode="large">
+          <div class="check"></div>
+          <div class="mode-icon">🖥️</div>
+          <div class="mode-title">Grand</div>
+          <div class="mode-desc">Carte centrale, style TikTok</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Position (mode petit uniquement) -->
+    <div class="section" id="corner-section">
+      <label>Position de la carte</label>
+      <div class="corner-grid">
+        <div class="corner-btn" data-corner="top-left">↖ Haut gauche</div>
+        <div class="corner-btn" data-corner="top-right">↗ Haut droite</div>
+        <div class="corner-btn" data-corner="bottom-left">↙ Bas gauche</div>
+        <div class="corner-btn active" data-corner="bottom-right">↘ Bas droite</div>
+      </div>
+    </div>
+
   </div>
 
-  <!-- Position (mode petit uniquement) -->
-  <div class="section" id="corner-section">
-    <label>Position de la carte</label>
-    <div class="corner-grid">
-      <div class="corner-btn" data-corner="top-left">↖ Haut gauche</div>
-      <div class="corner-btn" data-corner="top-right">↗ Haut droite</div>
-      <div class="corner-btn" data-corner="bottom-left">↙ Bas gauche</div>
-      <div class="corner-btn active" data-corner="bottom-right">↘ Bas droite</div>
+  <!-- ─── Onglet Contrôles ───────────────────────────────────────────── -->
+  <div class="tab-panel" id="tab-control">
+
+    <!-- Raccourci skip -->
+    <div class="section">
+      <label>Raccourci pour passer au suivant</label>
+      <div class="key-capture" id="key-capture">
+        <span class="key-hint" id="key-hint">Cliquer pour changer</span>
+        <span class="key-tag" id="key-display">Page ↓</span>
+      </div>
     </div>
+
+    <!-- Volume -->
+    <div class="section">
+      <label>Volume des vidéos</label>
+      <div class="volume-row">
+        <input type="range" id="volume" min="0" max="100" value="50">
+        <span class="volume-value" id="volume-value">50%</span>
+      </div>
+    </div>
+
   </div>
 
-  <!-- Filtres NSFW -->
-  <div class="section">
-    <label>Contenu adulte</label>
-    <div class="toggle-row">
-      <span class="toggle-desc">Autoriser Porn / Hentai</span>
-      <label class="toggle-switch">
-        <input type="checkbox" id="adult-toggle" checked>
-        <span class="toggle-slider"></span>
-      </label>
-    </div>
-    <p class="filter-hint">Désactiver active la classification locale (nsfwjs). Vidéos et GIFs non classifiés.</p>
-  </div>
+  <!-- ─── Onglet Système ─────────────────────────────────────────────── -->
+  <div class="tab-panel" id="tab-system">
 
-  <!-- Raccourci skip -->
-  <div class="section">
-    <label>Raccourci pour passer au suivant</label>
-    <div class="key-capture" id="key-capture">
-      <span class="key-hint" id="key-hint">Cliquer pour changer</span>
-      <span class="key-tag" id="key-display">Page ↓</span>
+    <!-- Démarrage avec Windows -->
+    <div class="section">
+      <label>Démarrage automatique</label>
+      <div class="toggle-row">
+        <span class="toggle-desc">Lancer avec Windows</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="autostart-toggle">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
     </div>
-  </div>
 
-  <!-- Volume -->
-  <div class="section">
-    <label>Volume des vidéos</label>
-    <div class="volume-row">
-      <input type="range" id="volume" min="0" max="100" value="50">
-      <span class="volume-value" id="volume-value">50%</span>
+    <!-- Filtres NSFW -->
+    <div class="section">
+      <label>Modération</label>
+      <div class="toggle-row">
+        <span class="toggle-desc">Filtre NSFW</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="nsfw-toggle">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <p class="filter-hint">Activer charge nsfwjs localement et bloque les images classifiées Porn ou Hentai. Vidéos et GIFs non classifiés.</p>
     </div>
-  </div>
 
-  <!-- Démarrage avec Windows -->
-  <div class="section">
-    <label>Démarrage automatique</label>
-    <div class="toggle-row">
-      <span class="toggle-desc">Lancer avec Windows</span>
-      <label class="toggle-switch">
-        <input type="checkbox" id="autostart-toggle">
-        <span class="toggle-slider"></span>
-      </label>
-    </div>
   </div>
 
   <button class="btn-launch" id="btn-launch">Lancer l'overlay</button>
@@ -312,7 +369,7 @@
     let selectedCorner = 'bottom-right'
     let skipKey        = 'PageDown'
     let captureMode    = false
-    let allowAdult     = true
+    let nsfwFilter     = false
 
     const select          = document.getElementById('screen-select')
     const cornerSection   = document.getElementById('corner-section')
@@ -398,17 +455,24 @@
         volumeValue.textContent = settings.volume + '%'
       }
 
-      // Restaurer toggle adulte
-      if (settings.allowAdult !== undefined) {
-        allowAdult = !!settings.allowAdult
-        document.getElementById('adult-toggle').checked = allowAdult
+      // Restaurer toggle nsfw
+      if (settings.nsfwFilter !== undefined) {
+        nsfwFilter = !!settings.nsfwFilter
+        document.getElementById('nsfw-toggle').checked = nsfwFilter
       }
 
       // Démarrage automatique (état réel depuis l'OS)
       autostartToggle.checked = autostart || false
 
-      // Ajuster hauteur fenêtre selon mode restauré
-      ipcRenderer.send('resize-setup', selectedMode === 'small' ? 720 : 610)
+    })
+
+    // ── Bascule onglets ─────────────────────────────────────────────────────
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.dataset.tab
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn))
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + target))
+      })
     })
 
     // ── Sélection du mode ───────────────────────────────────────────────────
@@ -424,7 +488,6 @@
 
         const isSmall = selectedMode === 'small'
         cornerSection.style.display = isSmall ? 'block' : 'none'
-        ipcRenderer.send('resize-setup', isSmall ? 720 : 610)
       })
     })
 
@@ -475,9 +538,9 @@
       volumeValue.textContent = volumeInput.value + '%'
     })
 
-    // ── Toggle adulte ───────────────────────────────────────────────────────
-    document.getElementById('adult-toggle').addEventListener('change', (e) => {
-      allowAdult = e.target.checked
+    // ── Toggle nsfw ─────────────────────────────────────────────────────────
+    document.getElementById('nsfw-toggle').addEventListener('change', (e) => {
+      nsfwFilter = e.target.checked
     })
 
     // ── Démarrage avec Windows ──────────────────────────────────────────────
@@ -498,7 +561,7 @@
         corner:       selectedMode === 'small' ? selectedCorner : 'bottom-right',
         skipKey,
         volume:       parseInt(volumeInput.value, 10),
-        allowAdult
+        nsfwFilter
       })
     })
   </script>

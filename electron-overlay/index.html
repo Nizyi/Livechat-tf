@@ -461,9 +461,24 @@
   const WS_URL        = WS_HOST ? 'ws://' + WS_HOST : ''
   const RECONNECT_MS  = 3000
 
-  // Si false → bloque les images classifiées Porn ou Hentai (nsfwjs lazy)
-  const ALLOW_ADULT  = params.get('allowAdult') !== '0'
+  // Si true → bloque les images classifiées Porn ou Hentai (nsfwjs lazy)
+  const NSFW_FILTER  = params.get('nsfwFilter') === '1'
   const BLOCKED_CATS = new Set(['Porn', 'Hentai'])
+
+  // Mode "Ne pas déranger" — synchronisé depuis le main process
+  let dndUntil = 0
+  try {
+    const { ipcRenderer } = require('electron')
+    ipcRenderer.on('dnd-update', (event, payload) => {
+      dndUntil = (payload && payload.until) || 0
+      const active = dndUntil > Date.now()
+      console.log(active
+        ? `[DND] Activé jusqu'à ${new Date(dndUntil).toLocaleTimeString()}`
+        : '[DND] Désactivé')
+    })
+  } catch (e) {
+    console.warn('[DND] ipcRenderer indisponible :', e.message)
+  }
   const IMG_DISPLAY_MS = 9000    // durée fixe pour les images
   const VIDEO_MAX_MS   = 15000   // durée max pour les vidéos
   const BETWEEN_MS     = 400     // pause entre deux cartes
@@ -818,8 +833,8 @@
   }
 
   async function passesNsfwFilter(data) {
-    // Adulte autorisé → tout passe (et nsfwjs n'est pas chargé)
-    if (ALLOW_ADULT) return true
+    // Filtre désactivé → tout passe (et nsfwjs n'est pas chargé)
+    if (!NSFW_FILTER) return true
 
     // Vidéos et GIFs : non classifiés en v1.3 → passent toujours
     if (data.type !== 'image' || data.isGif) return true
@@ -870,6 +885,10 @@
         const data = validatePayload(raw)
         if (!data) {
           console.warn('[Sécurité] Payload ignoré (invalide ou vide)')
+          return
+        }
+        if (Date.now() < dndUntil) {
+          console.log('[DND] Message ignoré (mode silencieux)')
           return
         }
         const allowed = await passesNsfwFilter(data)

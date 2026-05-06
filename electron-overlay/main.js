@@ -26,6 +26,8 @@ let updateWin       = null
 let tray            = null
 let registeredSkipKey = null
 let pendingUpdate   = null   // { version } quand un update est téléchargé et prêt
+let dndUntil        = 0      // timestamp ms ; 0 = inactif
+let dndTimer        = null
 
 // ── Persistence des paramètres ────────────────────────────────────────────────
 // Initialisé dans app.whenReady() — app.getPath() indisponible avant
@@ -36,9 +38,9 @@ const DEFAULT_SETTINGS = {
   corner:       'bottom-right',
   skipKey:      'PageDown',
   volume:       50,
-  // true = tout passe (défaut), false = bloque les images classifiées Porn ou Hentai
-  // false déclenche le chargement lazy de nsfwjs côté overlay
-  allowAdult:   true
+  // true = filtre actif (bloque Porn/Hentai), false = tout passe (défaut)
+  // true déclenche le chargement lazy de nsfwjs côté overlay
+  nsfwFilter:   false
 }
 
 let LOG_PATH = null
@@ -94,6 +96,11 @@ let settings = { ...DEFAULT_SETTINGS }
 function loadSettings() {
   try {
     const data = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'))
+    // Migration v1.3.0 → v1.3.1 : allowAdult (true=passe) → nsfwFilter (true=bloque)
+    if (data.allowAdult !== undefined && data.nsfwFilter === undefined) {
+      data.nsfwFilter = !data.allowAdult
+      delete data.allowAdult
+    }
     settings = { ...DEFAULT_SETTINGS, ...data }
     writeLog('INFO', `Settings chargés : ${JSON.stringify(settings)}`)
   } catch (e) {
@@ -137,7 +144,7 @@ function createSetupWindow() {
 
   setupWin = new BrowserWindow({
     width:     460,
-    height:    720,   // mode petit par défaut (écran + mode + coin + skip + volume + autostart)
+    height:    700,   // taille fixe avec onglets — contenu ne dépasse jamais
     resizable: false,
     frame:     true,
     center:    true,
@@ -169,7 +176,7 @@ function createSetupWindow() {
 function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100) {
   const wsHost     = BUILD_CONFIG.wsHost
   const wsToken    = BUILD_CONFIG.wsToken
-  const allowAdult = settings.allowAdult !== false ? '1' : '0'
+  const nsfwFilter = settings.nsfwFilter ? '1' : '0'
   const displays = screen.getAllDisplays()
   const display  = displays[displayIndex] || displays[0]
   const { x, y, width, height } = display.bounds
@@ -193,14 +200,15 @@ function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100
   overlayWin.setIgnoreMouseEvents(true, { forward: true })
   overlayWin.setAlwaysOnTop(true, 'screen-saver')
 
-  overlayWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode, corner, volume, wsHost, wsToken, allowAdult } })
+  overlayWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode, corner, volume, wsHost, wsToken, nsfwFilter } })
   overlayWin.on('closed', () => { overlayWin = null })
+  overlayWin.webContents.on('did-finish-load', () => broadcastDnd())
   attachRendererLogger(overlayWin)
 }
 
 // ── IPC : la fenêtre setup envoie les choix ──────────────────────────────────
-ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volume, allowAdult }) => {
-  saveSettings({ displayIndex, mode, corner, skipKey, volume, allowAdult })
+ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volume, nsfwFilter }) => {
+  saveSettings({ displayIndex, mode, corner, skipKey, volume, nsfwFilter })
   registerSkipShortcut(skipKey)
 
   // destroy() synchrone — évite que le callback 'closed' écrase la nouvelle ref
@@ -211,11 +219,6 @@ ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volu
   }
   createOverlay(displayIndex, mode, corner, volume)
   if (setupWin) setupWin.close()
-})
-
-// ── IPC : redimensionne la fenêtre setup selon le mode choisi ─────────────────
-ipcMain.on('resize-setup', (event, height) => {
-  if (setupWin) setupWin.setSize(460, height)
 })
 
 // ── IPC : lancement avec Windows ─────────────────────────────────────────────
@@ -236,12 +239,54 @@ function attachRendererLogger(win) {
       setTimeout(() => {
         const s = settings
         createOverlay(s.displayIndex, s.mode, s.corner, s.volume)
+        // Renvoyer l'état DND au cas où il était actif avant le crash
+        broadcastDnd()
       }, 2000)
     }
   })
 }
 
+// ── Ne pas déranger ───────────────────────────────────────────────────────────
+function setDnd(durationMs) {
+  dndUntil = Date.now() + durationMs
+  if (dndTimer) clearTimeout(dndTimer)
+  dndTimer = setTimeout(() => clearDnd(), durationMs)
+  broadcastDnd()
+  refreshTrayMenu()
+  if (tray) {
+    const end = new Date(dndUntil).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+    tray.setToolTip(`LiveChat Overlay — Silencieux jusqu'à ${end}`)
+  }
+  writeLog('INFO', `DND activé pour ${Math.round(durationMs/60000)}min (jusqu'à ${new Date(dndUntil).toISOString()})`)
+}
+
+function clearDnd() {
+  dndUntil = 0
+  if (dndTimer) { clearTimeout(dndTimer); dndTimer = null }
+  broadcastDnd()
+  refreshTrayMenu()
+  if (tray) tray.setToolTip('LiveChat Overlay')
+  writeLog('INFO', 'DND désactivé')
+}
+
+function broadcastDnd() {
+  if (overlayWin && !overlayWin.isDestroyed()) {
+    overlayWin.webContents.send('dnd-update', { until: dndUntil })
+  }
+}
+
 // ── Icône zone de notification (system tray) ──────────────────────────────────
+function dndActive() { return dndUntil > Date.now() }
+
+function dndRemainingLabel() {
+  const ms  = dndUntil - Date.now()
+  const min = Math.ceil(ms / 60000)
+  if (min < 60) return `${min} min`
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return m === 0 ? `${h} h` : `${h} h ${m} min`
+}
+
 function buildTrayMenu() {
   const items = []
   if (pendingUpdate) {
@@ -251,6 +296,26 @@ function buildTrayMenu() {
     })
     items.push({ type: 'separator' })
   }
+
+  if (dndActive()) {
+    items.push({
+      label: `🌙 Silencieux — ${dndRemainingLabel()} restantes`,
+      enabled: false
+    })
+  }
+  items.push({
+    label: 'Ne pas déranger',
+    submenu: [
+      { label: '5 minutes',  click: () => setDnd(5  * 60 * 1000) },
+      { label: '30 minutes', click: () => setDnd(30 * 60 * 1000) },
+      { label: '1 heure',    click: () => setDnd(1  * 60 * 60 * 1000) },
+      { label: '3 heures',   click: () => setDnd(3  * 60 * 60 * 1000) },
+      { label: '8 heures',   click: () => setDnd(8  * 60 * 60 * 1000) },
+      { type: 'separator' },
+      { label: 'Désactiver', enabled: dndActive(), click: () => clearDnd() }
+    ]
+  })
+  items.push({ type: 'separator' })
   items.push({ label: 'Paramètres', click: () => createSetupWindow() })
   items.push({
     label: 'Ouvrir le dossier de logs et config',
