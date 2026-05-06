@@ -25,6 +25,24 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024
 // Longueur max du texte affiché
 const MAX_TEXT_LENGTH = 500
 
+// ── Anti-spam ────────────────────────────────────────────────────────────────
+// Délai minimum entre deux messages broadcastés par un même user (ms)
+const COOLDOWN_MS = parseInt(process.env.COOLDOWN_MS || '5000', 10)
+
+// Durée avant suppression automatique du message d'avertissement (ms)
+const WARN_TTL_MS = 5000
+
+// userId → timestamp du dernier message accepté
+const lastSent = new Map()
+
+// Nettoyage périodique des entrées expirées (évite croissance illimitée)
+setInterval(() => {
+  const now = Date.now()
+  for (const [id, ts] of lastSent) {
+    if (now - ts > COOLDOWN_MS * 4) lastSent.delete(id)
+  }
+}, 60_000).unref()
+
 // ── Fonctions utilitaires ─────────────────────────────────────────────────────
 
 /**
@@ -150,6 +168,31 @@ function startBot(wss) {
 
     // Si rien à envoyer (fichier rejeté ET pas de texte ET pas d'embed GIF)
     if (!text && !mediaUrl) return
+
+    // ── Cooldown anti-spam ────────────────────────────────────────────────────
+    const now      = Date.now()
+    const last     = lastSent.get(message.author.id) || 0
+    const elapsed  = now - last
+    if (elapsed < COOLDOWN_MS) {
+      const remaining = Math.ceil((COOLDOWN_MS - elapsed) / 1000)
+      console.log(`[Cooldown] ${message.author.username} bloqué (${remaining}s restantes)`)
+      try {
+        await message.delete()
+      } catch (e) {
+        console.warn('[Cooldown] Suppression impossible (permission Manage Messages requise) :', e.message)
+      }
+      try {
+        const warn = await message.channel.send({
+          content: `<@${message.author.id}> ⏱️ patiente **${remaining}s** avant de renvoyer un message.`,
+          allowedMentions: { users: [message.author.id] }
+        })
+        setTimeout(() => warn.delete().catch(() => {}), WARN_TTL_MS)
+      } catch (e) {
+        console.warn('[Cooldown] Avertissement impossible :', e.message)
+      }
+      return
+    }
+    lastSent.set(message.author.id, now)
 
     // ── Payload ───────────────────────────────────────────────────────────────
     const data = {
