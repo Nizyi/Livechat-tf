@@ -39,6 +39,7 @@ Deux projets indépendants qui tournent en parallèle :
 - ✅ **Auto-update** via electron-updater (toast de notification + redémarrage)
 - ✅ **Anti-spam** : cooldown 5s par utilisateur, message supprimé + avertissement éphémère
 - ✅ **Authentification WS** par token (Sec-WebSocket-Protocol, comparaison `timingSafeEqual`)
+- ✅ **Filtre contenu adulte** côté client via [nsfwjs](https://github.com/infinitered/nsfwjs) (lazy-loaded, zéro impact si désactivé)
 - ✅ **Multi-écran** + position configurable (4 coins)
 - ✅ **Démarrage automatique** Windows
 - ✅ **Logs persistés** dans `%APPDATA%\livechat-overlay\error.log`

@@ -102,6 +102,11 @@
     .corner-btn:hover { background: #252535; }
     .corner-btn.active { border-color: #6366f1; background: rgba(99,102,241,.1); color: #a5b4fc; }
 
+    /* ── Filtres NSFW ───────────────────────────────────────────────────── */
+    .filter-hint {
+      font-size: 10px; color: #64748b; margin-top: 6px; line-height: 1.4;
+    }
+
     /* ── Raccourci skip ─────────────────────────────────────────────────── */
     .key-capture {
       display: flex; align-items: center; justify-content: space-between;
@@ -251,6 +256,19 @@
     </div>
   </div>
 
+  <!-- Filtres NSFW -->
+  <div class="section">
+    <label>Contenu adulte</label>
+    <div class="toggle-row">
+      <span class="toggle-desc">Autoriser Porn / Hentai</span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="adult-toggle" checked>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <p class="filter-hint">Désactiver active la classification locale (nsfwjs). Vidéos et GIFs non classifiés.</p>
+  </div>
+
   <!-- Raccourci skip -->
   <div class="section">
     <label>Raccourci pour passer au suivant</label>
@@ -294,6 +312,7 @@
     let selectedCorner = 'bottom-right'
     let skipKey        = 'PageDown'
     let captureMode    = false
+    let allowAdult     = true
 
     const select          = document.getElementById('screen-select')
     const cornerSection   = document.getElementById('corner-section')
@@ -379,6 +398,12 @@
         volumeValue.textContent = settings.volume + '%'
       }
 
+      // Restaurer toggle adulte
+      if (settings.allowAdult !== undefined) {
+        allowAdult = !!settings.allowAdult
+        document.getElementById('adult-toggle').checked = allowAdult
+      }
+
       // Démarrage automatique (état réel depuis l'OS)
       autostartToggle.checked = autostart || false
 
@@ -450,6 +475,11 @@
       volumeValue.textContent = volumeInput.value + '%'
     })
 
+    // ── Toggle adulte ───────────────────────────────────────────────────────
+    document.getElementById('adult-toggle').addEventListener('change', (e) => {
+      allowAdult = e.target.checked
+    })
+
     // ── Démarrage avec Windows ──────────────────────────────────────────────
     autostartToggle.addEventListener('change', () => {
       ipcRenderer.send('set-autostart', autostartToggle.checked)
@@ -467,7 +497,8 @@
         mode:         selectedMode,
         corner:       selectedMode === 'small' ? selectedCorner : 'bottom-right',
         skipKey,
-        volume:       parseInt(volumeInput.value, 10)
+        volume:       parseInt(volumeInput.value, 10),
+        allowAdult
       })
     })
   </script>

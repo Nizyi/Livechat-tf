@@ -27,13 +27,15 @@
     ]
   },
   "scripts": {
-    "start":   "electron .",
-    "dist":    "electron-builder",
+    "start": "electron .",
+    "dist": "electron-builder",
     "release": "electron-builder --publish always"
   },
   "dependencies": {
+    "@tensorflow/tfjs": "^4.22.0",
     "dotenv": "^16.6.1",
-    "electron-updater": "^6.1.0"
+    "electron-updater": "^6.1.0",
+    "nsfwjs": "^4.3.0"
   },
   "devDependencies": {
     "electron": "^30.5.1",

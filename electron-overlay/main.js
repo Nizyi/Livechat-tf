@@ -35,7 +35,10 @@ const DEFAULT_SETTINGS = {
   mode:         'small',
   corner:       'bottom-right',
   skipKey:      'PageDown',
-  volume:       50
+  volume:       50,
+  // true = tout passe (défaut), false = bloque les images classifiées Porn ou Hentai
+  // false déclenche le chargement lazy de nsfwjs côté overlay
+  allowAdult:   true
 }
 
 let LOG_PATH = null
@@ -164,8 +167,9 @@ function createSetupWindow() {
 
 // ── Fenêtre overlay ───────────────────────────────────────────────────────────
 function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100) {
-  const wsHost  = BUILD_CONFIG.wsHost
-  const wsToken = BUILD_CONFIG.wsToken
+  const wsHost     = BUILD_CONFIG.wsHost
+  const wsToken    = BUILD_CONFIG.wsToken
+  const allowAdult = settings.allowAdult !== false ? '1' : '0'
   const displays = screen.getAllDisplays()
   const display  = displays[displayIndex] || displays[0]
   const { x, y, width, height } = display.bounds
@@ -189,14 +193,14 @@ function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100
   overlayWin.setIgnoreMouseEvents(true, { forward: true })
   overlayWin.setAlwaysOnTop(true, 'screen-saver')
 
-  overlayWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode, corner, volume, wsHost, wsToken } })
+  overlayWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode, corner, volume, wsHost, wsToken, allowAdult } })
   overlayWin.on('closed', () => { overlayWin = null })
   attachRendererLogger(overlayWin)
 }
 
 // ── IPC : la fenêtre setup envoie les choix ──────────────────────────────────
-ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volume }) => {
-  saveSettings({ displayIndex, mode, corner, skipKey, volume })
+ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volume, allowAdult }) => {
+  saveSettings({ displayIndex, mode, corner, skipKey, volume, allowAdult })
   registerSkipShortcut(skipKey)
 
   // destroy() synchrone — évite que le callback 'closed' écrase la nouvelle ref
