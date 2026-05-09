@@ -32,6 +32,10 @@ const COOLDOWN_MS = parseInt(process.env.COOLDOWN_MS || '5000', 10)
 // Durée avant suppression automatique du message d'avertissement (ms)
 const WARN_TTL_MS = 5000
 
+// Durée avant suppression automatique d'un message Discord broadcasté (ms)
+// Mettre 0 pour désactiver. Nécessite la permission "Manage Messages".
+const DELETE_AFTER_MS = parseInt(process.env.DELETE_AFTER_MS || '10000', 10)
+
 // Délai d'attente avant traitement quand le message contient une URL — laisse
 // à Discord le temps de générer l'embed (Tenor, image directe, etc.)
 const EMBED_WAIT_MS = 1500
@@ -260,6 +264,15 @@ function startBot(wss) {
     })
 
     broadcast(wss, data)
+
+    // ── Suppression auto du message Discord ───────────────────────────────────
+    if (DELETE_AFTER_MS > 0) {
+      setTimeout(() => {
+        message.delete().catch((e) => {
+          console.warn('[AutoDelete] Suppression impossible (permission Manage Messages requise) :', e.message)
+        })
+      }, DELETE_AFTER_MS)
+    }
   })
 
   client.on('error', (err) => {
