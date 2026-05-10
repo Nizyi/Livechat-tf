@@ -480,7 +480,8 @@
     console.warn('[DND] ipcRenderer indisponible :', e.message)
   }
   const IMG_DISPLAY_MS = 9000    // durée fixe pour les images
-  const VIDEO_MAX_MS   = 15000   // durée max pour les vidéos
+  // Durée max d'affichage des vidéos — paramétrable depuis le setup (défaut 30s, borné 5–120s)
+  const VIDEO_MAX_MS   = Math.max(5000, Math.min(120000, parseInt(params.get('videoMaxMs')) || 30000))
   const BETWEEN_MS     = 400     // pause entre deux cartes
   const MAX_QUEUE      = 20      // file d'attente bornée (évite fuite mémoire)
 

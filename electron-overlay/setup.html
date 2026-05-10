@@ -324,6 +324,16 @@
       </div>
     </div>
 
+    <!-- Durée max vidéo -->
+    <div class="section">
+      <label>Durée max d'affichage des vidéos</label>
+      <div class="volume-row">
+        <input type="range" id="video-max" min="5" max="120" value="30">
+        <span class="volume-value" id="video-max-value">30s</span>
+      </div>
+      <p class="filter-hint">Les vidéos plus courtes gardent leur durée native.</p>
+    </div>
+
   </div>
 
   <!-- ─── Onglet Système ─────────────────────────────────────────────── -->
@@ -378,6 +388,8 @@
     const keyDisplay      = document.getElementById('key-display')
     const volumeInput     = document.getElementById('volume')
     const volumeValue     = document.getElementById('volume-value')
+    const videoMaxInput   = document.getElementById('video-max')
+    const videoMaxValue   = document.getElementById('video-max-value')
     const statusMsg       = document.getElementById('status-msg')
     const btnLaunch       = document.getElementById('btn-launch')
     const autostartToggle = document.getElementById('autostart-toggle')
@@ -453,6 +465,13 @@
       if (settings.volume !== undefined) {
         volumeInput.value = settings.volume
         volumeValue.textContent = settings.volume + '%'
+      }
+
+      // Restaurer durée max vidéo (settings.videoMaxMs en ms → input en secondes)
+      if (settings.videoMaxMs !== undefined) {
+        const sec = Math.round(settings.videoMaxMs / 1000)
+        videoMaxInput.value = sec
+        videoMaxValue.textContent = sec + 's'
       }
 
       // Restaurer toggle nsfw
@@ -538,6 +557,10 @@
       volumeValue.textContent = volumeInput.value + '%'
     })
 
+    videoMaxInput.addEventListener('input', () => {
+      videoMaxValue.textContent = videoMaxInput.value + 's'
+    })
+
     // ── Toggle nsfw ─────────────────────────────────────────────────────────
     document.getElementById('nsfw-toggle').addEventListener('change', (e) => {
       nsfwFilter = e.target.checked
@@ -561,6 +584,7 @@
         corner:       selectedMode === 'small' ? selectedCorner : 'bottom-right',
         skipKey,
         volume:       parseInt(volumeInput.value, 10),
+        videoMaxMs:   parseInt(videoMaxInput.value, 10) * 1000,
         nsfwFilter
       })
     })
