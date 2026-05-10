@@ -194,6 +194,57 @@
       word-break: break-word;
     }
 
+    /* ── Zone audio (mp3 — pas de visuel, juste un equalizer) ────────────────── */
+    .audio-zone {
+      display: none;
+      align-items: center;
+      gap: 14px;
+      padding: 18px 18px 16px;
+      flex-shrink: 0;
+    }
+    .audio-zone.active { display: flex; }
+
+    .audio-icon {
+      flex-shrink: 0;
+      width: 38px; height: 38px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #6366f1, #ec4899);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 6px 18px rgba(99,102,241,.45);
+    }
+
+    .audio-bars {
+      display: flex; align-items: flex-end; gap: 3px;
+      height: 28px;
+      flex: 1;
+    }
+    .audio-bars span {
+      display: block;
+      width: 4px;
+      border-radius: 2px;
+      background: linear-gradient(to top, #60a5fa, #a78bfa, #ec4899);
+      animation: eq 0.9s ease-in-out infinite;
+    }
+    .audio-bars span:nth-child(1) { animation-delay: -0.20s; }
+    .audio-bars span:nth-child(2) { animation-delay: -0.65s; }
+    .audio-bars span:nth-child(3) { animation-delay: -0.40s; }
+    .audio-bars span:nth-child(4) { animation-delay: -0.85s; }
+    .audio-bars span:nth-child(5) { animation-delay: -0.10s; }
+    .audio-bars span:nth-child(6) { animation-delay: -0.55s; }
+    .audio-bars span:nth-child(7) { animation-delay: -0.30s; }
+    .audio-bars span:nth-child(8) { animation-delay: -0.75s; }
+
+    @keyframes eq {
+      0%, 100% { height: 25%; }
+      50%      { height: 100%; }
+    }
+
+    body.mode-large .audio-zone { padding: 26px 26px 22px; gap: 18px; }
+    body.mode-large .audio-icon { width: 52px; height: 52px; font-size: 24px; border-radius: 14px; }
+    body.mode-large .audio-bars { height: 42px; gap: 4px; }
+    body.mode-large .audio-bars span { width: 6px; }
+
     /* ── Barre de progression ────────────────────────────────────────────────── */
     .progress-track { height: 2.5px; background: rgba(255,255,255,.07); flex-shrink: 0; }
 
@@ -414,6 +465,16 @@
           </div>
         </div>
 
+        <!-- Audio (mp3 — pas de visuel) -->
+        <div class="audio-zone" id="audio-zone">
+          <div class="audio-icon">🎵</div>
+          <div class="audio-bars">
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+          </div>
+          <div id="audio-slot"></div>
+        </div>
+
         <!-- Texte seul -->
         <div class="text-zone" id="text-zone">
           <div class="accent-bar"></div>
@@ -480,8 +541,13 @@
     console.warn('[DND] ipcRenderer indisponible :', e.message)
   }
   const IMG_DISPLAY_MS = 9000    // durée fixe pour les images
-  // Durée max d'affichage des vidéos — paramétrable depuis le setup (défaut 30s, borné 5–120s)
-  const VIDEO_MAX_MS   = Math.max(5000, Math.min(120000, parseInt(params.get('videoMaxMs')) || 30000))
+  // Durée max d'affichage des vidéos — réglée côté bot via /limite (default 15s)
+  // Le bot envoie videoMaxMs dans chaque payload ; on garde une valeur courante
+  // mise à jour à chaque message reçu.
+  const DEFAULT_VIDEO_MAX_MS = 15000
+  const VIDEO_MAX_MIN_MS     = 1000
+  const VIDEO_MAX_MAX_MS     = 300000
+  let   videoMaxMs           = DEFAULT_VIDEO_MAX_MS
   const BETWEEN_MS     = 400     // pause entre deux cartes
   const MAX_QUEUE      = 20      // file d'attente bornée (évite fuite mémoire)
 
@@ -497,7 +563,9 @@
   // Types MIME acceptés
   const ALLOWED_MIME = [
     'image/png', 'image/jpeg', 'image/gif', 'image/webp',
-    'video/mp4', 'video/webm', 'video/ogg'
+    'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime',
+    'audio/mpeg', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/wave',
+    'audio/x-wav', 'audio/webm', 'audio/aac', 'audio/x-m4a', 'audio/mp4'
   ]
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -514,6 +582,8 @@
   const tomContent    = document.getElementById('tom-content')
   const textZone      = document.getElementById('text-zone')
   const tzContent     = document.getElementById('tz-content')
+  const audioZone     = document.getElementById('audio-zone')
+  const audioSlot     = document.getElementById('audio-slot')
   const progressBar   = document.getElementById('progress')
   const queueBadge    = document.getElementById('queue-badge')
   const hud           = document.getElementById('hud')
@@ -573,14 +643,20 @@
   // Arrêt complet des médias (son + image)
   // ═══════════════════════════════════════════════════════════════════════════
   function stopAllMedia() {
-    const vids = mediaSlot.querySelectorAll('video')
-    vids.forEach(v => {
-      v.pause()
-      v.removeAttribute('src')
-      v.load()          // libère la ressource
+    const players = [
+      ...mediaSlot.querySelectorAll('video'),
+      ...audioSlot.querySelectorAll('audio')
+    ]
+    players.forEach(p => {
+      p.pause()
+      p.removeAttribute('src')
+      p.load()          // libère la ressource
     })
-    // On vide le slot après un court délai (laisse le temps au navigateur)
-    setTimeout(() => { mediaSlot.innerHTML = '' }, 100)
+    // On vide les slots après un court délai (laisse le temps au navigateur)
+    setTimeout(() => {
+      mediaSlot.innerHTML = ''
+      audioSlot.innerHTML = ''
+    }, 100)
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -621,7 +697,14 @@
     // Valider l'URL média
     if (data.url && isAllowedUrl(data.url) && isAllowedMime(data.contentType)) {
       clean.url  = data.url
-      clean.type = (data.type === 'video' || data.type === 'image') ? data.type : 'image'
+      clean.type = (data.type === 'video' || data.type === 'image' || data.type === 'audio') ? data.type : 'image'
+    }
+
+    // Met à jour la limite vidéo si présente (réglée côté bot via /limite)
+    if (typeof data.videoMaxMs === 'number'
+        && data.videoMaxMs >= VIDEO_MAX_MIN_MS
+        && data.videoMaxMs <= VIDEO_MAX_MAX_MS) {
+      videoMaxMs = data.videoMaxMs
     }
 
     // Ignorer si totalement vide
@@ -658,8 +741,21 @@
     mediaGradient.style.display = 'none'
     textOnMedia.style.display   = 'none'
     textZone.style.display      = 'none'
+    audioZone.classList.remove('active')
 
     // ── Média ────────────────────────────────────────────────────────────────
+    if (data.url && data.type === 'audio') {
+      audioZone.classList.add('active')
+      if (data.text) {
+        textZone.style.display = 'block'
+        tzContent.textContent  = data.text
+      }
+      renderAudio(data)
+      // La durée de l'audio détermine le timer → on attend loadedmetadata
+      showCard()
+      return
+    }
+
     if (data.url && data.type !== 'text') {
       mediaZone.classList.add('has-media')
 
@@ -707,6 +803,36 @@
     mediaSlot.appendChild(img)
   }
 
+  function renderAudio(data) {
+    const aud = document.createElement('audio')
+    aud.autoplay    = true
+    aud.loop        = false
+    aud.muted       = false
+    aud.volume      = VOLUME
+    aud.controls    = false
+    aud.preload     = 'metadata'
+    aud.src         = data.url
+
+    aud.addEventListener('loadedmetadata', () => {
+      const durMs = Math.min(Math.max(aud.duration * 1000, 1000), videoMaxMs)
+      startProgress(durMs)
+      currentTimer = setTimeout(onDone, durMs)
+    })
+
+    aud.addEventListener('ended', () => {
+      clearTimeout(currentTimer)
+      onDone()
+    })
+
+    aud.addEventListener('error', () => {
+      clearTimeout(currentTimer)
+      onDone()
+    })
+
+    audioSlot.innerHTML = ''
+    audioSlot.appendChild(aud)
+  }
+
   function renderVideo(data) {
     const vid = document.createElement('video')
     vid.autoplay    = true
@@ -721,7 +847,7 @@
       // GIF Tenor : boucler + durée fixe comme une image
       const durMs = data.isGif
         ? IMG_DISPLAY_MS
-        : Math.min(Math.max(vid.duration * 1000, 1000), VIDEO_MAX_MS)
+        : Math.min(Math.max(vid.duration * 1000, 1000), videoMaxMs)
 
       if (data.isGif) vid.loop = true
 

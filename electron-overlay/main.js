@@ -55,8 +55,6 @@ const DEFAULT_SETTINGS = {
   corner:       'bottom-right',
   skipKey:      'PageDown',
   volume:       50,
-  // Durée max d'affichage des vidéos en ms (les vidéos plus courtes gardent leur durée native)
-  videoMaxMs:   30000,
   // true = filtre actif (bloque Porn/Hentai), false = tout passe (défaut)
   // true déclenche le chargement lazy de nsfwjs côté overlay
   nsfwFilter:   false
@@ -192,7 +190,7 @@ function createSetupWindow() {
 }
 
 // ── Fenêtre overlay ───────────────────────────────────────────────────────────
-function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100, videoMaxMs = 30000) {
+function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100) {
   const wsHost     = BUILD_CONFIG.wsHost
   const wsToken    = BUILD_CONFIG.wsToken
   const nsfwFilter = settings.nsfwFilter ? '1' : '0'
@@ -219,15 +217,15 @@ function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100
   overlayWin.setIgnoreMouseEvents(true, { forward: true })
   overlayWin.setAlwaysOnTop(true, 'screen-saver')
 
-  overlayWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode, corner, volume, videoMaxMs, wsHost, wsToken, nsfwFilter } })
+  overlayWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode, corner, volume, wsHost, wsToken, nsfwFilter } })
   overlayWin.on('closed', () => { overlayWin = null })
   overlayWin.webContents.on('did-finish-load', () => broadcastDnd())
   attachRendererLogger(overlayWin)
 }
 
 // ── IPC : la fenêtre setup envoie les choix ──────────────────────────────────
-ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volume, videoMaxMs, nsfwFilter }) => {
-  saveSettings({ displayIndex, mode, corner, skipKey, volume, videoMaxMs, nsfwFilter })
+ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volume, nsfwFilter }) => {
+  saveSettings({ displayIndex, mode, corner, skipKey, volume, nsfwFilter })
   registerSkipShortcut(skipKey)
 
   // destroy() synchrone — évite que le callback 'closed' écrase la nouvelle ref
@@ -236,7 +234,7 @@ ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volu
     overlayWin.destroy()
     overlayWin = null
   }
-  createOverlay(displayIndex, mode, corner, volume, videoMaxMs)
+  createOverlay(displayIndex, mode, corner, volume)
   if (setupWin) setupWin.close()
 })
 
@@ -257,7 +255,7 @@ function attachRendererLogger(win) {
       overlayWin = null
       setTimeout(() => {
         const s = settings
-        createOverlay(s.displayIndex, s.mode, s.corner, s.volume, s.videoMaxMs)
+        createOverlay(s.displayIndex, s.mode, s.corner, s.volume)
         // Renvoyer l'état DND au cas où il était actif avant le crash
         broadcastDnd()
       }, 2000)
@@ -341,8 +339,19 @@ function buildTrayMenu() {
     click: () => shell.openPath(app.getPath('userData'))
   })
   items.push({ type: 'separator' })
-  items.push({ label: 'Quitter', click: () => app.quit() })
+  items.push({ label: 'Redémarrer', click: () => relaunchApp() })
+  items.push({ label: 'Quitter',    click: () => app.quit() })
   return Menu.buildFromTemplate(items)
+}
+
+function relaunchApp() {
+  writeLog('INFO', 'Redémarrage demandé via menu tray')
+  // Ferme proprement les fenêtres pour libérer le single-instance lock
+  if (overlayWin) { try { overlayWin.removeAllListeners('closed'); overlayWin.destroy() } catch {} }
+  if (setupWin)   { try { setupWin.destroy()   } catch {} }
+  if (updateWin)  { try { updateWin.destroy()  } catch {} }
+  app.relaunch()
+  app.quit()
 }
 
 function refreshTrayMenu() {
