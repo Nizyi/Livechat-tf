@@ -3,7 +3,7 @@
 // puis lance l'overlay transparent sur l'écran choisi.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { app, BrowserWindow, screen, shell, globalShortcut, ipcMain, Tray, Menu, nativeImage, nativeTheme } = require('electron')
+const { app, BrowserWindow, screen, shell, globalShortcut, ipcMain, Tray, Menu, nativeImage, nativeTheme, powerMonitor } = require('electron')
 const path = require('path')
 const fs   = require('fs')
 const { autoUpdater } = require('electron-updater')
@@ -61,10 +61,47 @@ const DEFAULT_SETTINGS = {
   // Affiche les arrivées en salon vocal (si le bot a VOICE_NOTIFY=1)
   voiceNotify:  true,
   // 'same' = à côté de la carte livechat, sinon top-left|top-center|top-right|bottom-…
-  voicePosition: 'same'
+  voicePosition: 'same',
+  // true = au démarrage, lance directement l'overlay sans afficher la fenêtre de config
+  startHidden:  false
 }
 
 let LOG_PATH = null
+
+// ── Suivi des fermetures ──────────────────────────────────────────────────────
+// Un fichier « session.lock » existe tant que l'app tourne. S'il est encore là
+// au démarrage suivant, la session précédente ne s'est pas fermée proprement
+// (crash du process principal, fin de tâche, coupure du PC…).
+let SESSION_PATH = null
+let quitReason   = 'inconnue'
+let sessionStart = Date.now()
+
+function quitApp(reason) {
+  quitReason = reason
+  app.quit()
+}
+
+function checkPreviousSession() {
+  try {
+    const prev = JSON.parse(fs.readFileSync(SESSION_PATH, 'utf8'))
+    writeLog('WARN', `Session précédente (v${prev.version}, démarrée le ${prev.start}) terminée SANS fermeture propre — crash, fin de tâche ou arrêt brutal du PC`)
+  } catch (e) {
+    if (e.code !== 'ENOENT') writeLog('WARN', `session.lock illisible : ${e.message}`)
+  }
+  try {
+    fs.writeFileSync(SESSION_PATH, JSON.stringify({ version: app.getVersion(), start: new Date().toISOString(), pid: process.pid }))
+  } catch (e) {
+    writeLog('WARN', `Impossible d'écrire session.lock : ${e.message}`)
+  }
+}
+
+function endSession(reason) {
+  if (!SESSION_PATH) return
+  const min = Math.round((Date.now() - sessionStart) / 60000)
+  writeLog('QUIT', `Fermeture — raison : ${reason} (session de ${min} min)`)
+  try { fs.unlinkSync(SESSION_PATH) } catch {}
+  SESSION_PATH = null   // évite un double log (session-end puis will-quit)
+}
 
 function writeLog(level, msg) {
   if (!LOG_PATH) return
@@ -193,6 +230,7 @@ function createSetupWindow() {
   })
 
   setupWin.on('closed', () => { setupWin = null })
+  setupWin.on('session-end', () => endSession('arrêt ou déconnexion de Windows'))
 }
 
 // ── Fenêtre overlay ───────────────────────────────────────────────────────────
@@ -227,6 +265,7 @@ function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100
 
   overlayWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode, corner, volume, wsHost, wsToken, nsfwFilter, voiceNotify, voicePos } })
   overlayWin.on('closed', () => { overlayWin = null })
+  overlayWin.on('session-end', () => endSession('arrêt ou déconnexion de Windows'))
   overlayWin.webContents.on('did-finish-load', () => broadcastDnd())
   attachRendererLogger(overlayWin)
 }
@@ -249,6 +288,11 @@ ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volu
 // ── IPC : lancement avec Windows ─────────────────────────────────────────────
 ipcMain.on('set-autostart', (event, enabled) => {
   app.setLoginItemSettings({ openAtLogin: !!enabled })
+})
+
+// ── IPC : démarrage en arrière-plan ──────────────────────────────────────────
+ipcMain.on('set-start-hidden', (event, enabled) => {
+  saveSettings({ startHidden: !!enabled })
 })
 
 // ── Capture des erreurs renderer ──────────────────────────────────────────────
@@ -348,7 +392,7 @@ function buildTrayMenu() {
   })
   items.push({ type: 'separator' })
   items.push({ label: 'Redémarrer', click: () => relaunchApp() })
-  items.push({ label: 'Quitter',    click: () => app.quit() })
+  items.push({ label: 'Quitter',    click: () => quitApp('menu tray « Quitter »') })
   return Menu.buildFromTemplate(items)
 }
 
@@ -359,7 +403,7 @@ function relaunchApp() {
   if (setupWin)   { try { setupWin.destroy()   } catch {} }
   if (updateWin)  { try { updateWin.destroy()  } catch {} }
   app.relaunch()
-  app.quit()
+  quitApp('redémarrage via menu tray')
 }
 
 function refreshTrayMenu() {
@@ -423,6 +467,7 @@ function installPendingUpdate() {
   if (overlayWin) { try { overlayWin.removeAllListeners('closed'); overlayWin.destroy() } catch {} }
   if (setupWin)   { try { setupWin.destroy()   } catch {} }
   if (updateWin)  { try { updateWin.destroy()  } catch {} }
+  quitReason = `installation de la mise à jour v${pendingUpdate.version}`
   setImmediate(() => autoUpdater.quitAndInstall(false, true))
 }
 
@@ -433,19 +478,35 @@ ipcMain.on('update-dismiss', () => {
 
 // ── Cycle de vie ──────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
+  if (!gotSingleInstanceLock) return   // second lancement : on quitte, rien à initialiser
   SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json')
   LOG_PATH      = path.join(app.getPath('userData'), 'error.log')
+  SESSION_PATH  = path.join(app.getPath('userData'), 'session.lock')
   process.on('uncaughtException',    err    => writeLog('CRASH',   err.stack || String(err)))
   process.on('unhandledRejection',   reason => writeLog('CRASH',   'UnhandledRejection: ' + reason))
 
   writeLog('BOOT', `LiveChat Overlay v${app.getVersion()} démarrage — userData=${app.getPath('userData')}`)
   writeLog('BOOT', `WS_HOST=${BUILD_CONFIG.wsHost || '(VIDE — vérifier .env au build)'} | WS_TOKEN=${BUILD_CONFIG.wsToken ? '(défini, ' + BUILD_CONFIG.wsToken.length + ' chars)' : '(VIDE — vérifier .env au build)'}`)
 
+  checkPreviousSession()
+  sessionStart = Date.now()
+
+  // Veille / réveil : aide à expliquer une coupure WS ou un renderer tué
+  powerMonitor.on('suspend', () => writeLog('INFO', 'PC en veille'))
+  powerMonitor.on('resume',  () => writeLog('INFO', 'Sortie de veille'))
+
   nativeTheme.themeSource = 'dark'   // barre de titre Windows sombre
   setupAutoUpdater()
   autoUpdater.checkForUpdatesAndNotify().catch(err => logUpdate('checkForUpdates rejected: ' + err))
   loadSettings()
-  createSetupWindow()
+  if (settings.startHidden) {
+    // Démarrage silencieux : overlay direct avec les derniers réglages
+    writeLog('INFO', 'Démarrage en arrière-plan — fenêtre de config non affichée')
+    registerSkipShortcut(settings.skipKey)
+    createOverlay(settings.displayIndex, settings.mode, settings.corner, settings.volume)
+  } else {
+    createSetupWindow()
+  }
   createTray()
 
   // Mode test : déclenche un faux update-downloaded pour vérifier le toast (npm start -- --test-update)
@@ -458,7 +519,7 @@ app.whenReady().then(() => {
     }, 1500)
   }
 
-  globalShortcut.register('CommandOrControl+Shift+Q', () => { app.quit() })
+  globalShortcut.register('CommandOrControl+Shift+Q', () => { quitApp('raccourci Ctrl+Shift+Q') })
   globalShortcut.register('CommandOrControl+Shift+P', () => { createSetupWindow() })
 })
 
@@ -466,6 +527,7 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {})
 
 app.on('will-quit', () => {
+  endSession(quitReason)
   globalShortcut.unregisterAll()
   if (tray) tray.destroy()
 })

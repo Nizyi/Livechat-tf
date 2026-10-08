@@ -271,6 +271,7 @@
       background: var(--ink-2); border: 1px solid var(--cut);
     }
     .toggle-desc { font-size: 13px; }
+    .toggle-row.stacked { margin-top: 6px; }
 
     .toggle-switch { position: relative; width: 36px; height: 18px; flex-shrink: 0; }
     .toggle-switch input { opacity: 0; width: 0; height: 0; }
@@ -448,6 +449,14 @@
           <span class="toggle-slider"></span>
         </label>
       </div>
+      <div class="toggle-row stacked">
+        <span class="toggle-desc">Démarrer en arrière-plan</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="start-hidden-toggle">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <p class="filter-hint">Lance l'overlay sans ouvrir cette fenêtre. Pour y revenir : <strong>Ctrl+Shift+P</strong> ou l'icône de la zone de notification.</p>
     </div>
 
     <!-- Filtres NSFW -->
@@ -616,6 +625,7 @@
 
       // Démarrage automatique (état réel depuis l'OS)
       autostartToggle.checked = autostart || false
+      document.getElementById('start-hidden-toggle').checked = !!settings.startHidden
 
     })
 
@@ -716,6 +726,11 @@
     // ── Démarrage avec Windows ──────────────────────────────────────────────
     autostartToggle.addEventListener('change', () => {
       ipcRenderer.send('set-autostart', autostartToggle.checked)
+    })
+
+    // ── Démarrage en arrière-plan (sauvé immédiatement) ─────────────────────
+    document.getElementById('start-hidden-toggle').addEventListener('change', (e) => {
+      ipcRenderer.send('set-start-hidden', e.target.checked)
     })
 
     function setStatus(msg, type) {
