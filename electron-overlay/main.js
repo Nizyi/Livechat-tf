@@ -3,7 +3,7 @@
 // puis lance l'overlay transparent sur l'écran choisi.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const { app, BrowserWindow, screen, shell, globalShortcut, ipcMain, Tray, Menu, nativeImage } = require('electron')
+const { app, BrowserWindow, screen, shell, globalShortcut, ipcMain, Tray, Menu, nativeImage, nativeTheme } = require('electron')
 const path = require('path')
 const fs   = require('fs')
 const { autoUpdater } = require('electron-updater')
@@ -57,7 +57,9 @@ const DEFAULT_SETTINGS = {
   volume:       50,
   // true = filtre actif (bloque Porn/Hentai), false = tout passe (défaut)
   // true déclenche le chargement lazy de nsfwjs côté overlay
-  nsfwFilter:   false
+  nsfwFilter:   false,
+  // Affiche les arrivées en salon vocal (si le bot a VOICE_NOTIFY=1)
+  voiceNotify:  true
 }
 
 let LOG_PATH = null
@@ -166,6 +168,8 @@ function createSetupWindow() {
     frame:     true,
     center:    true,
     title:     'LiveChat Overlay — Configuration',
+    icon:      path.join(__dirname, 'assets', 'icon.png'),
+    backgroundColor: '#0c1016',   // évite le flash blanc avant le rendu
     webPreferences: {
       nodeIntegration:  true,
       contextIsolation: false
@@ -194,6 +198,7 @@ function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100
   const wsHost     = BUILD_CONFIG.wsHost
   const wsToken    = BUILD_CONFIG.wsToken
   const nsfwFilter = settings.nsfwFilter ? '1' : '0'
+  const voiceNotify = settings.voiceNotify ? '1' : '0'
   const displays = screen.getAllDisplays()
   const display  = displays[displayIndex] || displays[0]
   const { x, y, width, height } = display.bounds
@@ -217,15 +222,15 @@ function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100
   overlayWin.setIgnoreMouseEvents(true, { forward: true })
   overlayWin.setAlwaysOnTop(true, 'screen-saver')
 
-  overlayWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode, corner, volume, wsHost, wsToken, nsfwFilter } })
+  overlayWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode, corner, volume, wsHost, wsToken, nsfwFilter, voiceNotify } })
   overlayWin.on('closed', () => { overlayWin = null })
   overlayWin.webContents.on('did-finish-load', () => broadcastDnd())
   attachRendererLogger(overlayWin)
 }
 
 // ── IPC : la fenêtre setup envoie les choix ──────────────────────────────────
-ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volume, nsfwFilter }) => {
-  saveSettings({ displayIndex, mode, corner, skipKey, volume, nsfwFilter })
+ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volume, nsfwFilter, voiceNotify }) => {
+  saveSettings({ displayIndex, mode, corner, skipKey, volume, nsfwFilter, voiceNotify })
   registerSkipShortcut(skipKey)
 
   // destroy() synchrone — évite que le callback 'closed' écrase la nouvelle ref
@@ -359,7 +364,7 @@ function refreshTrayMenu() {
 }
 
 function createTray() {
-  const icon = nativeImage.createFromPath(path.join(__dirname, 'logo.jpg'))
+  const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'tray.png'))
   tray = new Tray(icon)
   tray.setToolTip('LiveChat Overlay')
   tray.setContextMenu(buildTrayMenu())
@@ -433,6 +438,7 @@ app.whenReady().then(() => {
   writeLog('BOOT', `LiveChat Overlay v${app.getVersion()} démarrage — userData=${app.getPath('userData')}`)
   writeLog('BOOT', `WS_HOST=${BUILD_CONFIG.wsHost || '(VIDE — vérifier .env au build)'} | WS_TOKEN=${BUILD_CONFIG.wsToken ? '(défini, ' + BUILD_CONFIG.wsToken.length + ' chars)' : '(VIDE — vérifier .env au build)'}`)
 
+  nativeTheme.themeSource = 'dark'   // barre de titre Windows sombre
   setupAutoUpdater()
   autoUpdater.checkForUpdatesAndNotify().catch(err => logUpdate('checkForUpdates rejected: ' + err))
   loadSettings()

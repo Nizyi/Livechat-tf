@@ -153,7 +153,14 @@ TOKEN=token_du_bot_discord
 CHANNEL_ID=id_du_salon_a_surveiller
 PORT=8080
 WS_TOKEN=secret_partage_avec_overlay_min_16_chars
+VOICE_NOTIFY=1            # annonces d'arrivée en vocal (opt-in)
+VOICE_COOLDOWN_MS=15000   # anti deco/reco par user
+VOICE_CHANNEL_IDS=        # vide = tous les salons vocaux
 ```
+
+Payload vocal : `{ type: 'voice', author, avatarUrl, channelName, timestamp }`.
+L'overlay l'affiche en toast séparé de la file principale (`#voice-stack`),
+désactivable par client via le réglage `voiceNotify` (onglet Système).
 
 `WS_TOKEN` est requis. Le serveur WS rejette toute connexion sans le bon token
 (transmis par l'overlay via le sous-protocole `token.<WS_TOKEN>`).

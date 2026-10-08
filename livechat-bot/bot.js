@@ -44,6 +44,17 @@ const WARN_TTL_MS = 5000
 // Mettre 0 pour désactiver. Nécessite la permission "Manage Messages".
 const DELETE_AFTER_MS = parseInt(process.env.DELETE_AFTER_MS || '10000', 10)
 
+// ── Notifications vocales ────────────────────────────────────────────────────
+// Annonce sur l'overlay quand quelqu'un rejoint un salon vocal du serveur.
+// Activé avec VOICE_NOTIFY=1 (chaque overlay peut ensuite le couper dans ses réglages).
+const VOICE_NOTIFY = process.env.VOICE_NOTIFY === '1'
+// Délai minimum entre deux annonces pour un même user (anti deco/reco en boucle)
+const VOICE_COOLDOWN_MS = parseInt(process.env.VOICE_COOLDOWN_MS || '15000', 10)
+// Liste d'IDs de salons vocaux à surveiller (séparés par des virgules). Vide = tous.
+const VOICE_CHANNEL_IDS = new Set(
+  (process.env.VOICE_CHANNEL_IDS || '').split(',').map(s => s.trim()).filter(Boolean)
+)
+
 // Délai d'attente avant traitement quand le message contient une URL — laisse
 // à Discord le temps de générer l'embed (Tenor, image directe, etc.)
 const EMBED_WAIT_MS = 1500
@@ -97,10 +108,16 @@ loadState()
 const lastSent = new Map()
 
 // Nettoyage périodique des entrées expirées (évite croissance illimitée)
+// userId → timestamp de la dernière annonce vocale
+const lastVoiceJoin = new Map()
+
 setInterval(() => {
   const now = Date.now()
   for (const [id, ts] of lastSent) {
     if (now - ts > COOLDOWN_MS * 4) lastSent.delete(id)
+  }
+  for (const [id, ts] of lastVoiceJoin) {
+    if (now - ts > VOICE_COOLDOWN_MS) lastVoiceJoin.delete(id)
   }
 }, 60_000).unref()
 
@@ -157,7 +174,8 @@ function startBot(wss) {
     intents: [
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMessages,
-      GatewayIntentBits.MessageContent
+      GatewayIntentBits.MessageContent,
+      GatewayIntentBits.GuildVoiceStates
     ]
   })
 
@@ -177,6 +195,9 @@ function startBot(wss) {
     console.log(`[Bot] Connecté : ${client.user.tag}`)
     console.log(`[Bot] Surveillance salon : ${process.env.CHANNEL_ID}`)
     console.log(`[Bot] Limite vidéo actuelle : ${Math.round(videoMaxMs / 1000)}s`)
+    console.log(VOICE_NOTIFY
+      ? `[Bot] Annonces vocales actives (cooldown ${Math.round(VOICE_COOLDOWN_MS / 1000)}s)`
+      : '[Bot] Annonces vocales désactivées')
 
     // Enregistrement de la commande /limite sur chaque serveur (propagation immédiate)
     for (const [, guild] of client.guilds.cache) {
@@ -358,6 +379,43 @@ function startBot(wss) {
         })
       }, DELETE_AFTER_MS)
     }
+  })
+
+  // ── Arrivée dans un salon vocal ─────────────────────────────────────────────
+  client.on('voiceStateUpdate', (oldState, newState) => {
+    if (!VOICE_NOTIFY) return
+
+    // On ne garde que les arrivées / changements de salon (pas mute, deaf, stream…)
+    const channel = newState.channel
+    if (!channel || oldState.channelId === newState.channelId) return
+
+    const member = newState.member
+    if (!member || member.user.bot) return
+
+    // Uniquement le serveur du salon surveillé
+    const watched = client.channels.cache.get(process.env.CHANNEL_ID)
+    if (watched && watched.guildId !== newState.guild.id) return
+    if (VOICE_CHANNEL_IDS.size > 0 && !VOICE_CHANNEL_IDS.has(channel.id)) return
+
+    // Cooldown par user : ignore silencieusement les deco/reco rapides
+    const now  = Date.now()
+    const last = lastVoiceJoin.get(member.id) || 0
+    if (now - last < VOICE_COOLDOWN_MS) {
+      console.log(`[Vocal] ${member.user.username} ignoré (cooldown)`)
+      return
+    }
+    lastVoiceJoin.set(member.id, now)
+
+    const data = {
+      type:        'voice',
+      author:      member.displayName || member.user.username,
+      avatarUrl:   member.displayAvatarURL({ size: 128, extension: 'png', forceStatic: true }),
+      channelName: channel.name,
+      timestamp:   now
+    }
+
+    console.log(`[Vocal] ${data.author} → #${data.channelName}`)
+    broadcast(wss, data)
   })
 
   client.on('error', (err) => {
