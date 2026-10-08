@@ -429,23 +429,35 @@
       position: fixed;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 10px;
       pointer-events: none;
       z-index: 20;
+      --card-offset: 0px;   /* hauteur de la carte livechat visible (mode « même endroit ») */
+      transition: top .45s cubic-bezier(0.34, 1.1, 0.64, 1), bottom .45s cubic-bezier(0.34, 1.1, 0.64, 1);
     }
-    /* Même côté que la carte, bord vertical opposé (évite tout chevauchement) */
-    body.corner-bottom-right #voice-stack { top: 48px;    right: 48px; align-items: flex-end; }
-    body.corner-bottom-left  #voice-stack { top: 48px;    left:  48px; align-items: flex-start; }
-    body.corner-top-right    #voice-stack { bottom: 48px; right: 48px; align-items: flex-end;   flex-direction: column-reverse; }
-    body.corner-top-left     #voice-stack { bottom: 48px; left:  48px; align-items: flex-start; flex-direction: column-reverse; }
-    body.mode-large          #voice-stack { top: 20px;    left:  20px; align-items: flex-start; }
+
+    /* Emplacement choisi (réglage Position → Annonces vocales) */
+    body.vpos-top-left      #voice-stack { top: 48px;    left: 48px;  align-items: flex-start; }
+    body.vpos-top-center    #voice-stack { top: 48px;    left: 50%;   align-items: center; transform: translateX(-50%); }
+    body.vpos-top-right     #voice-stack { top: 48px;    right: 48px; align-items: flex-end; }
+    body.vpos-bottom-left   #voice-stack { bottom: 48px; left: 48px;  align-items: flex-start; }
+    body.vpos-bottom-center #voice-stack { bottom: 48px; left: 50%;   align-items: center; transform: translateX(-50%); }
+    body.vpos-bottom-right  #voice-stack { bottom: 48px; right: 48px; align-items: flex-end; }
+
+    /* « Même endroit » : collé à la carte livechat, décalé de sa hauteur quand elle est affichée */
+    body.vpos-same.corner-bottom-right #voice-stack { bottom: calc(48px + var(--card-offset)); right: 48px; align-items: flex-end; }
+    body.vpos-same.corner-bottom-left  #voice-stack { bottom: calc(48px + var(--card-offset)); left:  48px; align-items: flex-start; }
+    body.vpos-same.corner-top-right    #voice-stack { top:    calc(48px + var(--card-offset)); right: 48px; align-items: flex-end; }
+    body.vpos-same.corner-top-left     #voice-stack { top:    calc(48px + var(--card-offset)); left:  48px; align-items: flex-start; }
+    /* Mode grand : carte centrée → les annonces passent en haut au centre */
+    body.vpos-same.mode-large          #voice-stack { top: 24px; left: 50%; align-items: center; transform: translateX(-50%); }
 
     .voice-toast {
       display: flex;
       align-items: center;
-      gap: 10px;
-      max-width: 340px;
-      padding: 7px 14px 7px 7px;
+      gap: 14px;
+      max-width: 460px;
+      padding: 9px 22px 9px 9px;
       border-radius: 999px;
       background: rgba(8,8,14,.72);
       border: 1px solid rgba(255,255,255,.14);
@@ -453,31 +465,31 @@
       backdrop-filter: blur(18px);
       -webkit-backdrop-filter: blur(18px);
       opacity: 0;
-      transform: translateY(-8px) scale(.96);
+      transform: scale(.94);
       transition: opacity .35s ease, transform .35s cubic-bezier(0.34, 1.3, 0.64, 1);
     }
     .voice-toast.visible { opacity: 1; transform: none; }
 
     .voice-avatar {
-      width: 30px; height: 30px;
+      width: 46px; height: 46px;
       border-radius: 50%;
       object-fit: cover;
       flex-shrink: 0;
-      box-shadow: 0 0 0 2px #22c55e;
+      box-shadow: 0 0 0 2.5px #22c55e;
       background: linear-gradient(135deg, #4f46e5, #7c3aed);
       display: flex; align-items: center; justify-content: center;
-      font-size: 13px; font-weight: 800;
+      font-size: 19px; font-weight: 800;
     }
 
-    .voice-text { min-width: 0; line-height: 1.25; }
+    .voice-text { min-width: 0; line-height: 1.3; }
     .voice-name {
       display: block;
-      font-size: 13px; font-weight: 800;
+      font-size: 17px; font-weight: 800;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .voice-channel {
       display: block;
-      font-size: 11px; color: rgba(255,255,255,.6);
+      font-size: 13.5px; color: rgba(255,255,255,.65);
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
   </style>
@@ -587,7 +599,10 @@
 
   // Annonces d'arrivée en salon vocal (désactivables dans les paramètres)
   const VOICE_NOTIFY     = params.get('voiceNotify') !== '0'
-  const VOICE_TOAST_MS   = 5000
+  const VOICE_TOAST_MS   = 10000
+  const VOICE_SPOTS      = ['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right']
+  const VOICE_POS        = VOICE_SPOTS.includes(params.get('voicePos')) ? params.get('voicePos') : 'same'
+  document.body.classList.add('vpos-' + VOICE_POS)
   const VOICE_MAX_TOASTS = 3
   const BLOCKED_CATS = new Set(['Porn', 'Hentai'])
 
@@ -692,6 +707,7 @@
     stopAllMedia()
     card.classList.remove('visible')
     if (MODE === 'large') hud.classList.remove('visible')
+    placeVoiceStack()
     doneTimer = setTimeout(processNext, BETWEEN_MS)
   }
 
@@ -1001,13 +1017,26 @@
   function showCard() {
     card.classList.add('visible')
     if (MODE === 'large') hud.classList.add('visible')
+    placeVoiceStack()
   }
 
   function hideCard() {
     card.classList.remove('visible')
     if (MODE === 'large') hud.classList.remove('visible')
     stopAllMedia()
+    placeVoiceStack()
   }
+
+  // Mode « même endroit » : les annonces vocales se placent juste au-dessus
+  // (ou en dessous pour les coins du haut) de la carte quand elle est affichée
+  const VOICE_CARD_GAP = 24   // laisse la place au badge « +N en attente »
+  function placeVoiceStack() {
+    if (VOICE_POS !== 'same' || MODE !== 'small') return
+    const offset = card.classList.contains('visible') ? card.offsetHeight + VOICE_CARD_GAP : 0
+    voiceStack.style.setProperty('--card-offset', offset + 'px')
+  }
+  // La hauteur change quand l'image / la vidéo finit de charger
+  new ResizeObserver(placeVoiceStack).observe(card)
 
   function showInitial(name) {
     avatarInitial.textContent    = (name || '?')[0].toUpperCase()

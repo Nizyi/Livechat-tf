@@ -161,6 +161,8 @@ VOICE_CHANNEL_IDS=        # vide = tous les salons vocaux
 Payload vocal : `{ type: 'voice', author, avatarUrl, channelName, timestamp }`.
 L'overlay l'affiche en toast séparé de la file principale (`#voice-stack`),
 désactivable par client via le réglage `voiceNotify` (onglet Système).
+Position réglable dans l'onglet Position (`voicePosition` : `same` = collé à la carte
+livechat, sinon `top-left|top-center|top-right|bottom-left|bottom-center|bottom-right`). Affiché 10 s.
 
 `WS_TOKEN` est requis. Le serveur WS rejette toute connexion sans le bon token
 (transmis par l'overlay via le sous-protocole `token.<WS_TOKEN>`).

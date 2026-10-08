@@ -59,7 +59,9 @@ const DEFAULT_SETTINGS = {
   // true déclenche le chargement lazy de nsfwjs côté overlay
   nsfwFilter:   false,
   // Affiche les arrivées en salon vocal (si le bot a VOICE_NOTIFY=1)
-  voiceNotify:  true
+  voiceNotify:  true,
+  // 'same' = à côté de la carte livechat, sinon top-left|top-center|top-right|bottom-…
+  voicePosition: 'same'
 }
 
 let LOG_PATH = null
@@ -163,7 +165,7 @@ function createSetupWindow() {
 
   setupWin = new BrowserWindow({
     width:     460,
-    height:    700,   // taille fixe avec onglets — contenu ne dépasse jamais
+    height:    740,   // taille fixe avec onglets — contenu ne dépasse jamais
     resizable: false,
     frame:     true,
     center:    true,
@@ -199,6 +201,7 @@ function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100
   const wsToken    = BUILD_CONFIG.wsToken
   const nsfwFilter = settings.nsfwFilter ? '1' : '0'
   const voiceNotify = settings.voiceNotify ? '1' : '0'
+  const voicePos    = settings.voicePosition || 'same'
   const displays = screen.getAllDisplays()
   const display  = displays[displayIndex] || displays[0]
   const { x, y, width, height } = display.bounds
@@ -222,15 +225,15 @@ function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100
   overlayWin.setIgnoreMouseEvents(true, { forward: true })
   overlayWin.setAlwaysOnTop(true, 'screen-saver')
 
-  overlayWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode, corner, volume, wsHost, wsToken, nsfwFilter, voiceNotify } })
+  overlayWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode, corner, volume, wsHost, wsToken, nsfwFilter, voiceNotify, voicePos } })
   overlayWin.on('closed', () => { overlayWin = null })
   overlayWin.webContents.on('did-finish-load', () => broadcastDnd())
   attachRendererLogger(overlayWin)
 }
 
 // ── IPC : la fenêtre setup envoie les choix ──────────────────────────────────
-ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volume, nsfwFilter, voiceNotify }) => {
-  saveSettings({ displayIndex, mode, corner, skipKey, volume, nsfwFilter, voiceNotify })
+ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volume, nsfwFilter, voiceNotify, voicePosition }) => {
+  saveSettings({ displayIndex, mode, corner, skipKey, volume, nsfwFilter, voiceNotify, voicePosition })
   registerSkipShortcut(skipKey)
 
   // destroy() synchrone — évite que le callback 'closed' écrase la nouvelle ref

@@ -89,7 +89,7 @@
       margin-bottom: -1px;
       font-family: var(--f-disp);
       font-size: 11.5px; font-weight: 600;
-      letter-spacing: .14em; text-transform: uppercase;
+      letter-spacing: .1em; text-transform: uppercase;
       color: var(--mute);
       cursor: pointer;
       transition: color .15s, border-color .15s;
@@ -162,17 +162,50 @@
     .mode-desc { font-size: 11px; color: var(--mute); line-height: 1.45; }
 
     /* ── Position de la carte ───────────────────────────────────────────── */
-    .corner-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    /* ── Sélecteurs de position : un mini écran 16:9 cliquable ──────────── */
+    .screen-pick {
+      position: relative;
+      height: 150px;
+      background:
+        linear-gradient(var(--ink-2), var(--ink-2)) padding-box,
+        repeating-linear-gradient(90deg, transparent 0 23px, rgba(127,136,150,.07) 23px 24px);
+      border: 1px solid var(--cut);
+    }
+    .screen-pick.disabled { opacity: .35; pointer-events: none; }
 
-    .corner-btn {
-      padding: 9px 10px;
-      background: var(--ink-2); border: 1px solid var(--cut);
-      font-size: 12px; font-weight: 500;
-      color: var(--mute); cursor: pointer; text-align: center;
+    .corner-btn, .vpos-btn {
+      position: absolute;
+      padding: 7px 10px;
+      background: var(--ink); border: 1px solid var(--cut);
+      font-size: 11.5px; font-weight: 500;
+      color: var(--mute); cursor: pointer; white-space: nowrap;
       transition: border-color .15s, color .15s, background .15s;
     }
-    .corner-btn:hover  { background: var(--ink-3); color: var(--bone); }
-    .corner-btn.active { border-color: var(--bone); color: var(--bone); }
+    .corner-btn:hover, .vpos-btn:hover   { color: var(--bone); border-color: var(--mute); }
+    .corner-btn.active, .vpos-btn.active { background: var(--bone); border-color: var(--bone); color: var(--ink); font-weight: 600; }
+
+    [data-corner^="top"],    [data-vpos^="top"]    { top: 10px; }
+    [data-corner^="bottom"], [data-vpos^="bottom"] { bottom: 10px; }
+    [data-corner$="left"],   [data-vpos$="left"]   { left: 10px; }
+    [data-corner$="right"],  [data-vpos$="right"]  { right: 10px; }
+    [data-vpos$="center"] { left: 50%; transform: translateX(-50%); }
+
+    /* Fantôme de la carte livechat dans le sélecteur vocal */
+    .card-ghost {
+      position: absolute;
+      width: 70px; height: 44px;
+      border: 1px dashed var(--mute);
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--f-mono); font-size: 9.5px; color: var(--mute);
+      pointer-events: none;
+    }
+    .card-ghost.top    { top: 46px; }
+    .card-ghost.bottom { bottom: 46px; }
+    .card-ghost.left   { left: 10px; }
+    .card-ghost.right  { right: 10px; }
+    .card-ghost.center { left: 50%; top: 50%; transform: translate(-50%, -50%); width: 60px; height: 70px; }
+
+    .toggle-row + .screen-pick { margin-top: 8px; }
 
     .filter-hint {
       font-size: 11px; color: var(--mute); margin-top: 7px; line-height: 1.5;
@@ -301,6 +334,7 @@
   <!-- Onglets -->
   <div class="tabs">
     <button class="tab-btn active" data-tab="display">Affichage</button>
+    <button class="tab-btn"        data-tab="position">Position</button>
     <button class="tab-btn"        data-tab="control">Contrôles</button>
     <button class="tab-btn"        data-tab="system" >Système</button>
   </div>
@@ -336,14 +370,41 @@
       </div>
     </div>
 
-    <!-- Position (mode petit uniquement) -->
-    <div class="section" id="corner-section">
-      <label>Position de la carte</label>
-      <div class="corner-grid">
-        <div class="corner-btn" data-corner="top-left">↖ Haut gauche</div>
-        <div class="corner-btn" data-corner="top-right">↗ Haut droite</div>
-        <div class="corner-btn" data-corner="bottom-left">↙ Bas gauche</div>
-        <div class="corner-btn active" data-corner="bottom-right">↘ Bas droite</div>
+  </div>
+
+  <!-- ─── Onglet Position ────────────────────────────────────────────── -->
+  <div class="tab-panel" id="tab-position">
+
+    <!-- Carte livechat (mode petit uniquement) -->
+    <div class="section">
+      <label>Messages livechat</label>
+      <div class="screen-pick" id="corner-section">
+        <div class="corner-btn" data-corner="top-left">Haut gauche</div>
+        <div class="corner-btn" data-corner="top-right">Haut droite</div>
+        <div class="corner-btn" data-corner="bottom-left">Bas gauche</div>
+        <div class="corner-btn active" data-corner="bottom-right">Bas droite</div>
+      </div>
+      <p class="filter-hint" id="corner-large-note" style="display:none">En mode Grand, la carte est toujours centrée.</p>
+    </div>
+
+    <!-- Annonces vocales -->
+    <div class="section">
+      <label>Annonces vocales</label>
+      <div class="toggle-row">
+        <span class="toggle-desc">Au même endroit que les messages</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="voice-same-toggle" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="screen-pick disabled" id="vpos-pick">
+        <div class="card-ghost" id="card-ghost">carte</div>
+        <div class="vpos-btn" data-vpos="top-left">Haut gauche</div>
+        <div class="vpos-btn" data-vpos="top-center">Haut</div>
+        <div class="vpos-btn active" data-vpos="top-right">Haut droite</div>
+        <div class="vpos-btn" data-vpos="bottom-left">Bas gauche</div>
+        <div class="vpos-btn" data-vpos="bottom-center">Bas</div>
+        <div class="vpos-btn" data-vpos="bottom-right">Bas droite</div>
       </div>
     </div>
 
@@ -432,9 +493,31 @@
     let captureMode    = false
     let nsfwFilter     = false
     let voiceNotify    = true
+    let voicePosition  = 'same'      // 'same' ou un emplacement (top-left, bottom-center…)
+    let lastVoiceSpot  = 'top-right' // dernier emplacement choisi quand 'same' est décoché
 
     const select          = document.getElementById('screen-select')
     const cornerSection   = document.getElementById('corner-section')
+    const cornerLargeNote = document.getElementById('corner-large-note')
+    const voiceSameToggle = document.getElementById('voice-same-toggle')
+    const vposPick        = document.getElementById('vpos-pick')
+    const cardGhost       = document.getElementById('card-ghost')
+
+    // Met à jour le sélecteur vocal : grisé si « même endroit », fantôme de la carte
+    function refreshPositionUI() {
+      const isSmall = selectedMode === 'small'
+      cornerSection.style.display   = isSmall ? 'block' : 'none'
+      cornerLargeNote.style.display = isSmall ? 'none'  : 'block'
+
+      const same = voicePosition === 'same'
+      voiceSameToggle.checked = same
+      vposPick.classList.toggle('disabled', same)
+      document.querySelectorAll('.vpos-btn').forEach(b => {
+        b.classList.toggle('active', !same && b.dataset.vpos === voicePosition)
+      })
+
+      cardGhost.className = 'card-ghost ' + (isSmall ? selectedCorner.split('-').join(' ') : 'center')
+    }
     const keyCapture      = document.getElementById('key-capture')
     const keyHint         = document.getElementById('key-hint')
     const keyDisplay      = document.getElementById('key-display')
@@ -494,7 +577,6 @@
           c.querySelector('.check').textContent = active ? '✓' : ''
         })
         selectedMode = settings.mode
-        cornerSection.style.display = selectedMode === 'small' ? 'block' : 'none'
       }
 
       // Restaurer coin
@@ -527,6 +609,11 @@
       if (settings.voiceNotify !== undefined) voiceNotify = !!settings.voiceNotify
       document.getElementById('voice-toggle').checked = voiceNotify
 
+      // Restaurer position des annonces vocales
+      if (typeof settings.voicePosition === 'string') voicePosition = settings.voicePosition
+      if (voicePosition !== 'same') lastVoiceSpot = voicePosition
+      refreshPositionUI()
+
       // Démarrage automatique (état réel depuis l'OS)
       autostartToggle.checked = autostart || false
 
@@ -552,8 +639,7 @@
         card.querySelector('.check').textContent = '✓'
         selectedMode = card.dataset.mode
 
-        const isSmall = selectedMode === 'small'
-        cornerSection.style.display = isSmall ? 'block' : 'none'
+        refreshPositionUI()
       })
     })
 
@@ -563,6 +649,7 @@
         document.querySelectorAll('.corner-btn').forEach(b => b.classList.remove('active'))
         btn.classList.add('active')
         selectedCorner = btn.dataset.corner
+        refreshPositionUI()
       })
     })
 
@@ -609,6 +696,18 @@
       nsfwFilter = e.target.checked
     })
 
+    // ── Position des annonces vocales ───────────────────────────────────────
+    voiceSameToggle.addEventListener('change', () => {
+      voicePosition = voiceSameToggle.checked ? 'same' : lastVoiceSpot
+      refreshPositionUI()
+    })
+    document.querySelectorAll('.vpos-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        voicePosition = lastVoiceSpot = btn.dataset.vpos
+        refreshPositionUI()
+      })
+    })
+
     // ── Toggle annonces vocales ─────────────────────────────────────────────
     document.getElementById('voice-toggle').addEventListener('change', (e) => {
       voiceNotify = e.target.checked
@@ -633,7 +732,8 @@
         skipKey,
         volume:       parseInt(volumeInput.value, 10),
         nsfwFilter,
-        voiceNotify
+        voiceNotify,
+        voicePosition
       })
     })
   </script>
