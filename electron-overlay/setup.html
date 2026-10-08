@@ -212,27 +212,42 @@
     }
     .filter-hint strong { color: var(--bone); font-family: var(--f-mono); font-weight: 500; font-size: 10.5px; }
 
-    /* ── Raccourci skip ─────────────────────────────────────────────────── */
-    .key-capture {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 9px 12px;
+    /* ── Liste des raccourcis ───────────────────────────────────────────── */
+    .sc-list { display: grid; gap: 6px; }
+    .sc-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 10px 8px 12px;
       background: var(--ink-2); border: 1px solid var(--cut);
-      cursor: pointer;
-      transition: border-color .15s;
     }
-    .key-capture:hover     { border-color: var(--mute); }
-    .key-capture.listening { border-color: var(--bone); }
+    .sc-row.off .sc-name, .sc-row.off .sc-key { opacity: .4; }
+    .sc-name { font-size: 13px; }
+    .sc-status { grid-column: 1 / -1; font-size: 11px; color: var(--err); margin-top: -2px; }
+    .sc-status:empty { display: none; }
 
-    .key-hint { font-size: 11.5px; color: var(--mute); }
-    .key-capture.listening .key-hint { color: var(--bone); }
-
-    .key-tag {
-      padding: 3px 10px;
-      background: var(--bone); color: var(--ink);
-      font-family: var(--f-mono); font-size: 11.5px; font-weight: 500;
-      white-space: nowrap;
-      clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+    .sc-key {
+      min-width: 92px;
+      padding: 5px 10px;
+      background: var(--ink); color: var(--bone);
+      border: 1px solid var(--cut);
+      font-family: var(--f-mono); font-size: 11.5px;
+      cursor: pointer; text-align: center; white-space: nowrap;
+      transition: border-color .15s, background .15s, color .15s;
     }
+    .sc-key:hover { border-color: var(--mute); }
+    .sc-key.listening { background: var(--bone); color: var(--ink); border-color: var(--bone); }
+    .sc-key:focus-visible { outline: 1px solid var(--bone); outline-offset: 2px; }
+    .sc-row.off .sc-key { pointer-events: none; }
+
+    .link-btn {
+      background: none; border: none; padding: 0;
+      font: inherit; font-size: 11px; color: var(--mute);
+      text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+    }
+    .link-btn:hover { color: var(--bone); }
+    .sc-foot { display: flex; justify-content: space-between; gap: 12px; margin-top: 7px; }
 
     /* ── Volume ─────────────────────────────────────────────────────────── */
     .volume-row { display: flex; align-items: center; gap: 12px; }
@@ -414,12 +429,13 @@
   <!-- ─── Onglet Contrôles ───────────────────────────────────────────── -->
   <div class="tab-panel" id="tab-control">
 
-    <!-- Raccourci skip -->
+    <!-- Raccourcis clavier -->
     <div class="section">
-      <label>Raccourci pour passer au suivant</label>
-      <div class="key-capture" id="key-capture">
-        <span class="key-hint" id="key-hint">Cliquer pour changer</span>
-        <span class="key-tag" id="key-display">Page ↓</span>
+      <label>Raccourcis clavier</label>
+      <div class="sc-list" id="sc-list"></div>
+      <div class="sc-foot">
+        <span class="filter-hint" style="margin:0">Clique sur une touche pour la changer · Échap pour annuler</span>
+        <button class="link-btn" id="sc-reset" type="button">Réinitialiser</button>
       </div>
     </div>
 
@@ -456,7 +472,7 @@
           <span class="toggle-slider"></span>
         </label>
       </div>
-      <p class="filter-hint">Lance l'overlay sans ouvrir cette fenêtre. Pour y revenir : <strong>Ctrl+Shift+P</strong> ou l'icône de la zone de notification.</p>
+      <p class="filter-hint">Lance l'overlay sans ouvrir cette fenêtre. Pour y revenir : le raccourci « Ouvrir les paramètres » ou l'icône de la zone de notification.</p>
     </div>
 
     <!-- Filtres NSFW -->
@@ -489,7 +505,7 @@
 
   <button class="btn-launch" id="btn-launch">Lancer l'overlay</button>
   <div id="status-msg" class="info"></div>
-  <p class="shortcut-hint">Ctrl+Shift+Q pour fermer · Ctrl+Shift+P pour les paramètres</p>
+  <p class="shortcut-hint" id="shortcut-line"></p>
   <p class="shortcut-hint" id="version-line"></p>
 
   <script>
@@ -498,8 +514,18 @@
     // ── État ────────────────────────────────────────────────────────────────
     let selectedMode   = 'small'
     let selectedCorner = 'bottom-right'
-    let skipKey        = 'PageDown'
-    let captureMode    = false
+    const SHORTCUT_DEFS = [
+      { id: 'skip',     label: 'Passer au suivant' },
+      { id: 'settings', label: 'Ouvrir les paramètres' },
+      { id: 'quit',     label: 'Fermer LiveChat' }
+    ]
+    const DEFAULT_SHORTCUTS = {
+      skip:     { enabled: true, key: 'PageDown' },
+      settings: { enabled: true, key: 'CommandOrControl+Shift+P' },
+      quit:     { enabled: true, key: 'CommandOrControl+Shift+Q' }
+    }
+    let shortcuts   = JSON.parse(JSON.stringify(DEFAULT_SHORTCUTS))
+    let capturingId = null   // id du raccourci en cours de capture
     let nsfwFilter     = false
     let voiceNotify    = true
     let voicePosition  = 'same'      // 'same' ou un emplacement (top-left, bottom-center…)
@@ -527,9 +553,8 @@
 
       cardGhost.className = 'card-ghost ' + (isSmall ? selectedCorner.split('-').join(' ') : 'center')
     }
-    const keyCapture      = document.getElementById('key-capture')
-    const keyHint         = document.getElementById('key-hint')
-    const keyDisplay      = document.getElementById('key-display')
+    const scList          = document.getElementById('sc-list')
+    const shortcutLine    = document.getElementById('shortcut-line')
     const volumeInput     = document.getElementById('volume')
     const volumeValue     = document.getElementById('volume-value')
     const statusMsg       = document.getElementById('status-msg')
@@ -537,30 +562,141 @@
     const autostartToggle = document.getElementById('autostart-toggle')
     const versionLine     = document.getElementById('version-line')
 
-    // ── Conversion key → Electron accelerator ───────────────────────────────
-    function keyToAccelerator(key) {
-      if (key === ' ')          return 'Space'
-      if (key === 'ArrowDown')  return 'Down'
-      if (key === 'ArrowUp')    return 'Up'
-      if (key === 'ArrowLeft')  return 'Left'
-      if (key === 'ArrowRight') return 'Right'
-      if (key.length === 1)     return key.toUpperCase()
-      return key
+    // ── Conversion événement clavier → accelerator Electron ─────────────────
+    // e.code pour lettres/chiffres : indépendant de la disposition (AZERTY, Maj…)
+    function eventToAccelerator(e) {
+      let key = null
+      if (/^Key[A-Z]$/.test(e.code))        key = e.code.slice(3)
+      else if (/^Digit\d$/.test(e.code))   key = e.code.slice(5)
+      else if (/^Numpad\d$/.test(e.code))  key = 'num' + e.code.slice(6)
+      else if (/^F\d{1,2}$/.test(e.key))   key = e.key
+      else {
+        const map = {
+          ' ': 'Space', ArrowDown: 'Down', ArrowUp: 'Up', ArrowLeft: 'Left', ArrowRight: 'Right',
+          Enter: 'Return', PageDown: 'PageDown', PageUp: 'PageUp', Home: 'Home', End: 'End',
+          Insert: 'Insert', Delete: 'Delete', Backspace: 'Backspace', Tab: 'Tab',
+          Pause: 'Pause', ScrollLock: 'Scrolllock', PrintScreen: 'PrintScreen'
+        }
+        key = map[e.key] || null
+      }
+      if (!key) return null
+
+      const mods = []
+      if (e.ctrlKey)  mods.push('CommandOrControl')
+      if (e.altKey)   mods.push('Alt')
+      if (e.shiftKey) mods.push('Shift')
+      if (e.metaKey)  mods.push('Super')
+      return [...mods, key].join('+')
     }
 
     function keyLabel(acc) {
       const map = {
-        'PageDown': 'Page ↓', 'PageUp': 'Page ↑',
-        'Down': '↓', 'Up': '↑', 'Left': '←', 'Right': '→',
-        'Space': 'Espace', 'Home': 'Début', 'End': 'Fin',
-        'Insert': 'Inser', 'Delete': 'Suppr', 'Escape': 'Échap',
-        'Return': 'Entrée'
+        CommandOrControl: 'Ctrl', Control: 'Ctrl', Super: 'Win',
+        PageDown: 'Page ↓', PageUp: 'Page ↑',
+        Down: '↓', Up: '↑', Left: '←', Right: '→',
+        Space: 'Espace', Home: 'Début', End: 'Fin',
+        Insert: 'Inser', Delete: 'Suppr', Escape: 'Échap',
+        Return: 'Entrée', Backspace: 'Retour', Shift: 'Maj'
       }
-      return map[acc] || acc
+      return acc.split('+').map(k => map[k] || k).join('+')
     }
 
+    function statusText(st) {
+      if (!st || st === 'ok' || st === 'off') return ''
+      if (st === 'conflict') return 'Déjà utilisé par une autre application — choisis une autre touche.'
+      if (st === 'invalid')  return 'Combinaison non prise en charge.'
+      if (st.startsWith('duplicate:')) {
+        const other = SHORTCUT_DEFS.find(d => d.id === st.split(':')[1])
+        return `Même touche que « ${other ? other.label : '?'} ».`
+      }
+      return ''
+    }
+
+    // ── Rendu de la liste des raccourcis ────────────────────────────────────
+    let shortcutStatus = {}
+    function renderShortcuts() {
+      scList.textContent = ''
+      for (const def of SHORTCUT_DEFS) {
+        const sc  = shortcuts[def.id]
+        const row = document.createElement('div')
+        row.className = 'sc-row' + (sc.enabled ? '' : ' off')
+
+        const name = document.createElement('span')
+        name.className = 'sc-name'
+        name.textContent = def.label
+
+        const key = document.createElement('button')
+        key.type = 'button'
+        key.className = 'sc-key' + (capturingId === def.id ? ' listening' : '')
+        key.textContent = capturingId === def.id ? 'Appuie…' : keyLabel(sc.key)
+        key.addEventListener('click', () => startCapture(def.id))
+
+        const sw = document.createElement('label')
+        sw.className = 'toggle-switch'
+        sw.title = sc.enabled ? 'Désactiver' : 'Activer'
+        const input = document.createElement('input')
+        input.type = 'checkbox'
+        input.checked = sc.enabled
+        input.addEventListener('change', () => {
+          shortcuts[def.id].enabled = input.checked
+          pushShortcuts()
+        })
+        const slider = document.createElement('span')
+        slider.className = 'toggle-slider'
+        sw.append(input, slider)
+
+        const status = document.createElement('div')
+        status.className = 'sc-status'
+        status.textContent = sc.enabled ? statusText(shortcutStatus[def.id]) : ''
+
+        row.append(name, key, sw, status)
+        scList.appendChild(row)
+      }
+
+      // Rappel en bas de fenêtre, uniquement pour les raccourcis actifs
+      const parts = []
+      if (shortcuts.quit.enabled)     parts.push(`${keyLabel(shortcuts.quit.key)} pour fermer`)
+      if (shortcuts.settings.enabled) parts.push(`${keyLabel(shortcuts.settings.key)} pour les paramètres`)
+      shortcutLine.textContent = parts.join(' · ')
+    }
+
+    function pushShortcuts() {
+      renderShortcuts()
+      ipcRenderer.send('shortcuts-update', shortcuts)
+    }
+
+    function startCapture(id) {
+      if (capturingId) return
+      capturingId = id
+      ipcRenderer.send('shortcuts-suspend')
+      renderShortcuts()
+    }
+
+    function stopCapture(newKey) {
+      const id = capturingId
+      capturingId = null
+      if (newKey) {
+        shortcuts[id].key = newKey
+        pushShortcuts()
+      } else {
+        renderShortcuts()
+        ipcRenderer.send('shortcuts-resume')
+      }
+    }
+
+    ipcRenderer.on('shortcuts-status', (event, status) => {
+      shortcutStatus = status || {}
+      renderShortcuts()
+    })
+
+    document.getElementById('sc-reset').addEventListener('click', () => {
+      if (capturingId) return
+      shortcuts = JSON.parse(JSON.stringify(DEFAULT_SHORTCUTS))
+      pushShortcuts()
+    })
+
     // ── Réception des paramètres sauvegardés + liste des écrans ────────────
-    ipcRenderer.on('init', (event, { displays, primaryId, settings, autostart, version }) => {
+    ipcRenderer.on('init', (event, { displays, primaryId, settings, autostart, version, shortcutStatus: initialStatus }) => {
       versionLine.textContent = version ? `LiveChat Overlay v${version}` : ''
       // Écrans
       displays.forEach((d, i) => {
@@ -597,10 +733,13 @@
       }
 
       // Restaurer raccourci
-      if (settings.skipKey) {
-        skipKey = settings.skipKey
-        keyDisplay.textContent = keyLabel(settings.skipKey)
+      if (settings.shortcuts) {
+        for (const def of SHORTCUT_DEFS) {
+          if (settings.shortcuts[def.id]) shortcuts[def.id] = { ...settings.shortcuts[def.id] }
+        }
       }
+      shortcutStatus = initialStatus || {}
+      renderShortcuts()
 
       // Restaurer volume
       if (settings.volume !== undefined) {
@@ -663,38 +802,24 @@
       })
     })
 
-    // ── Capture du raccourci skip ───────────────────────────────────────────
-    keyCapture.addEventListener('click', () => {
-      if (captureMode) return
-      captureMode = true
-      keyCapture.classList.add('listening')
-      keyHint.textContent = 'Appuyer sur une touche...'
-      keyDisplay.textContent = '?'
-    })
-
+    // ── Capture d'un raccourci ──────────────────────────────────────────────
     document.addEventListener('keydown', (e) => {
-      if (!captureMode) return
+      if (!capturingId) return
       e.preventDefault()
       e.stopPropagation()
 
-      // Annuler avec Échap
-      if (e.key === 'Escape') {
-        captureMode = false
-        keyCapture.classList.remove('listening')
-        keyHint.textContent = 'Cliquer pour changer'
-        keyDisplay.textContent = keyLabel(skipKey)
-        return
-      }
+      if (e.key === 'Escape') { stopCapture(null); return }
+      // Modificateur seul : on attend la touche principale
+      if (['Control', 'Shift', 'Alt', 'Meta', 'CapsLock', 'AltGraph'].includes(e.key)) return
 
-      // Ignorer les modificateurs seuls
-      if (['Control', 'Shift', 'Alt', 'Meta', 'CapsLock'].includes(e.key)) return
-
-      skipKey = keyToAccelerator(e.key)
-      captureMode = false
-      keyCapture.classList.remove('listening')
-      keyHint.textContent = 'Cliquer pour changer'
-      keyDisplay.textContent = keyLabel(skipKey)
+      const acc = eventToAccelerator(e)
+      if (acc) stopCapture(acc)
     }, true)
+
+    // Clic ailleurs pendant la capture → annule
+    document.addEventListener('mousedown', (e) => {
+      if (capturingId && !e.target.closest('.sc-key')) stopCapture(null)
+    })
 
     // ── Volume ──────────────────────────────────────────────────────────────
     volumeInput.addEventListener('input', () => {
@@ -744,7 +869,6 @@
         displayIndex: parseInt(select.value, 10),
         mode:         selectedMode,
         corner:       selectedMode === 'small' ? selectedCorner : 'bottom-right',
-        skipKey,
         volume:       parseInt(volumeInput.value, 10),
         nsfwFilter,
         voiceNotify,

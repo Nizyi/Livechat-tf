@@ -41,7 +41,6 @@ let setupWin        = null
 let overlayWin      = null
 let updateWin       = null
 let tray            = null
-let registeredSkipKey = null
 let pendingUpdate   = null   // { version } quand un update est téléchargé et prêt
 let dndUntil        = 0      // timestamp ms ; 0 = inactif
 let dndTimer        = null
@@ -53,7 +52,12 @@ const DEFAULT_SETTINGS = {
   displayIndex: 0,
   mode:         'small',
   corner:       'bottom-right',
-  skipKey:      'PageDown',
+  // Raccourcis globaux : chacun activable et personnalisable (onglet Contrôles)
+  shortcuts: {
+    skip:     { enabled: true, key: 'PageDown' },
+    settings: { enabled: true, key: 'CommandOrControl+Shift+P' },
+    quit:     { enabled: true, key: 'CommandOrControl+Shift+Q' }
+  },
   volume:       50,
   // true = filtre actif (bloque Porn/Hentai), false = tout passe (défaut)
   // true déclenche le chargement lazy de nsfwjs côté overlay
@@ -160,6 +164,9 @@ function loadSettings() {
       delete data.allowAdult
     }
     settings = { ...DEFAULT_SETTINGS, ...data }
+    // Migration ≤ v1.6.2 : skipKey seul → shortcuts.skip
+    settings.shortcuts = normalizeShortcuts(data.shortcuts, data.skipKey)
+    delete settings.skipKey
     writeLog('INFO', `Settings chargés : ${JSON.stringify(settings)}`)
   } catch (e) {
     settings = { ...DEFAULT_SETTINGS }
@@ -177,23 +184,50 @@ function saveSettings(patch) {
   }
 }
 
-// ── Raccourci skip (local uniquement) ─────────────────────────────────────────
-function registerSkipShortcut(key) {
-  if (registeredSkipKey) {
-    try { globalShortcut.unregister(registeredSkipKey) } catch {}
-    registeredSkipKey = null
+// ── Raccourcis globaux ────────────────────────────────────────────────────────
+const SHORTCUT_ACTIONS = {
+  skip: {
+    label: 'Passer au suivant',
+    // N'agit que si l'overlay tourne et que le setup est fermé
+    run: () => { if (overlayWin && !setupWin) overlayWin.webContents.send('skip') }
+  },
+  settings: { label: 'Ouvrir les paramètres', run: () => createSetupWindow() },
+  quit:     { label: 'Fermer LiveChat',       run: () => quitApp(`raccourci ${settings.shortcuts.quit.key}`) }
+}
+
+function normalizeShortcuts(raw, legacySkipKey) {
+  const out = {}
+  for (const id of Object.keys(SHORTCUT_ACTIONS)) {
+    const def = DEFAULT_SETTINGS.shortcuts[id]
+    const r   = (raw && typeof raw[id] === 'object') ? raw[id] : {}
+    let key   = (typeof r.key === 'string' && r.key.length > 0 && r.key.length <= 64) ? r.key : def.key
+    if (id === 'skip' && !raw && typeof legacySkipKey === 'string' && legacySkipKey) key = legacySkipKey
+    out[id] = { enabled: typeof r.enabled === 'boolean' ? r.enabled : def.enabled, key }
   }
-  if (!key) return
-  try {
-    const ok = globalShortcut.register(key, () => {
-      // N'agit que si l'overlay tourne et que le setup est fermé
-      if (overlayWin && !setupWin) overlayWin.webContents.send('skip')
-    })
-    if (ok) registeredSkipKey = key
-    else console.warn('Raccourci skip déjà utilisé:', key)
-  } catch (e) {
-    console.error('Raccourci skip invalide:', key, e)
+  return out
+}
+
+/**
+ * (Ré)enregistre tous les raccourcis actifs.
+ * Retourne l'état de chacun : ok | off | conflict (pris par une autre app) | duplicate | invalid
+ */
+function applyShortcuts() {
+  globalShortcut.unregisterAll()
+  const status = {}
+  const used   = new Map()   // accelerator normalisé → id
+  for (const [id, sc] of Object.entries(settings.shortcuts)) {
+    if (!sc.enabled) { status[id] = 'off'; continue }
+    const norm = sc.key.toLowerCase()
+    if (used.has(norm)) { status[id] = 'duplicate:' + used.get(norm); continue }
+    try {
+      status[id] = globalShortcut.register(sc.key, SHORTCUT_ACTIONS[id].run) ? 'ok' : 'conflict'
+      if (status[id] === 'ok') used.set(norm, id)
+    } catch {
+      status[id] = 'invalid'
+    }
+    if (status[id] !== 'ok') writeLog('WARN', `Raccourci « ${SHORTCUT_ACTIONS[id].label} » (${sc.key}) non enregistré : ${status[id]}`)
   }
+  return status
 }
 
 // ── Fenêtre de configuration ──────────────────────────────────────────────────
@@ -225,11 +259,15 @@ function createSetupWindow() {
     setupWin.webContents.send('init', {
       displays, primaryId, settings,
       autostart: autostartOn,
+      shortcutStatus: applyShortcuts(),
       version:   app.getVersion()
     })
   })
 
-  setupWin.on('closed', () => { setupWin = null })
+  setupWin.on('closed', () => {
+    setupWin = null
+    applyShortcuts()   // au cas où la fenêtre a été fermée pendant une capture
+  })
   setupWin.on('session-end', () => endSession('arrêt ou déconnexion de Windows'))
 }
 
@@ -271,9 +309,8 @@ function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100
 }
 
 // ── IPC : la fenêtre setup envoie les choix ──────────────────────────────────
-ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volume, nsfwFilter, voiceNotify, voicePosition }) => {
-  saveSettings({ displayIndex, mode, corner, skipKey, volume, nsfwFilter, voiceNotify, voicePosition })
-  registerSkipShortcut(skipKey)
+ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, volume, nsfwFilter, voiceNotify, voicePosition }) => {
+  saveSettings({ displayIndex, mode, corner, volume, nsfwFilter, voiceNotify, voicePosition })
 
   // destroy() synchrone — évite que le callback 'closed' écrase la nouvelle ref
   if (overlayWin) {
@@ -288,6 +325,16 @@ ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, skipKey, volu
 // ── IPC : lancement avec Windows ─────────────────────────────────────────────
 ipcMain.on('set-autostart', (event, enabled) => {
   app.setLoginItemSettings({ openAtLogin: !!enabled })
+})
+
+// ── IPC : raccourcis ─────────────────────────────────────────────────────────
+// Pendant la capture d'une touche, on coupe tout (sinon Ctrl+Shift+Q fermerait l'app)
+ipcMain.on('shortcuts-suspend', () => globalShortcut.unregisterAll())
+ipcMain.on('shortcuts-resume',  (event) => event.reply('shortcuts-status', applyShortcuts()))
+ipcMain.on('shortcuts-update',  (event, shortcuts) => {
+  saveSettings({ shortcuts: normalizeShortcuts(shortcuts) })
+  writeLog('INFO', `Raccourcis : ${JSON.stringify(settings.shortcuts)}`)
+  event.reply('shortcuts-status', applyShortcuts())
 })
 
 // ── IPC : démarrage en arrière-plan ──────────────────────────────────────────
@@ -502,7 +549,6 @@ app.whenReady().then(() => {
   if (settings.startHidden) {
     // Démarrage silencieux : overlay direct avec les derniers réglages
     writeLog('INFO', 'Démarrage en arrière-plan — fenêtre de config non affichée')
-    registerSkipShortcut(settings.skipKey)
     createOverlay(settings.displayIndex, settings.mode, settings.corner, settings.volume)
   } else {
     createSetupWindow()
@@ -519,8 +565,7 @@ app.whenReady().then(() => {
     }, 1500)
   }
 
-  globalShortcut.register('CommandOrControl+Shift+Q', () => { quitApp('raccourci Ctrl+Shift+Q') })
-  globalShortcut.register('CommandOrControl+Shift+P', () => { createSetupWindow() })
+  applyShortcuts()
 })
 
 // Tray maintient l'app vivante — on ne quitte que via menu tray ou raccourci

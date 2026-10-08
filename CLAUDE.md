@@ -123,7 +123,10 @@ Sélectionné via `body.classList.add('mode-small')` ou `mode-large`.
 - Tout le texte utilisateur injecté via `.textContent` (jamais `.innerHTML`)
 
 ### Raccourci clavier
-- `Ctrl+Shift+Q` (ou `Cmd+Shift+Q`) → ferme l'overlay
+Raccourcis globaux configurables (onglet Contrôles), stockés dans `settings.shortcuts`
+(`skip` PageDown, `settings` Ctrl+Shift+P, `quit` Ctrl+Shift+Q) — chacun activable,
+touche personnalisable. `applyShortcuts()` (main.js) les enregistre et renvoie leur état
+(`ok|off|conflict|duplicate:<id>|invalid`). Suspendus pendant la capture d'une touche.
 
 ### Lancer
 ```bash
