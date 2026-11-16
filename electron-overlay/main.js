@@ -207,15 +207,47 @@ function normalizeShortcuts(raw, legacySkipKey) {
   return out
 }
 
+// « Passer au suivant » n'est réservé auprès de Windows que pendant qu'une carte
+// est affichée : un raccourci global vole la touche à toutes les autres apps
+// (ex. → ne déplace plus le curseur dans le texte), il ne doit donc pas être
+// pris en permanence.
+let cardActive = false
+let shortcutStatus = {}
+
+function skipWanted() {
+  return cardActive && !!overlayWin && !setupWin
+}
+
+function syncSkipShortcut() {
+  const sc = settings.shortcuts.skip
+  if (!sc || !sc.enabled || shortcutStatus.skip !== 'ok') return
+  try {
+    const has = globalShortcut.isRegistered(sc.key)
+    if (skipWanted() && !has) {
+      if (!globalShortcut.register(sc.key, SHORTCUT_ACTIONS.skip.run)) {
+        writeLog('WARN', `Raccourci « ${SHORTCUT_ACTIONS.skip.label} » (${sc.key}) pris par une autre app pendant l'affichage`)
+      }
+    } else if (!skipWanted() && has) {
+      globalShortcut.unregister(sc.key)
+    }
+  } catch (e) {
+    writeLog('WARN', `syncSkipShortcut : ${e.message}`)
+  }
+}
+
 /**
  * (Ré)enregistre tous les raccourcis actifs.
  * Retourne l'état de chacun : ok | off | conflict (pris par une autre app) | duplicate | invalid
+ * « skip » est seulement testé ici puis relâché si aucune carte n'est affichée
+ * (voir syncSkipShortcut).
  */
 function applyShortcuts() {
   globalShortcut.unregisterAll()
   const status = {}
   const used   = new Map()   // accelerator normalisé → id
-  for (const [id, sc] of Object.entries(settings.shortcuts)) {
+  // « skip » en dernier : en cas de doublon ce sont les raccourcis permanents qui gardent la touche
+  const entries = Object.entries(settings.shortcuts).sort(([a], [b]) => (a === 'skip') - (b === 'skip'))
+  for (const [id, sc] of entries) {
     if (!sc.enabled) { status[id] = 'off'; continue }
     const norm = sc.key.toLowerCase()
     if (used.has(norm)) { status[id] = 'duplicate:' + used.get(norm); continue }
@@ -227,6 +259,9 @@ function applyShortcuts() {
     }
     if (status[id] !== 'ok') writeLog('WARN', `Raccourci « ${SHORTCUT_ACTIONS[id].label} » (${sc.key}) non enregistré : ${status[id]}`)
   }
+  shortcutStatus = status
+  // Touche unique (pas de doublon) → on peut la relâcher sans toucher aux autres
+  if (status.skip === 'ok' && !skipWanted()) globalShortcut.unregister(settings.shortcuts.skip.key)
   return status
 }
 
@@ -249,6 +284,7 @@ function createSetupWindow() {
     }
   })
 
+  syncSkipShortcut()   // setup ouvert → « skip » inactif, on rend la touche
   setupWin.setMenuBarVisibility(false)
   setupWin.loadFile(path.join(__dirname, 'setup.html'))
 
@@ -302,9 +338,13 @@ function createOverlay(displayIndex, mode, corner = 'bottom-right', volume = 100
   overlayWin.setAlwaysOnTop(true, 'screen-saver')
 
   overlayWin.loadFile(path.join(__dirname, 'index.html'), { query: { mode, corner, volume, wsHost, wsToken, nsfwFilter, voiceNotify, voicePos } })
-  overlayWin.on('closed', () => { overlayWin = null })
+  overlayWin.on('closed', () => { overlayWin = null; cardActive = false; syncSkipShortcut() })
   overlayWin.on('session-end', () => endSession('arrêt ou déconnexion de Windows'))
-  overlayWin.webContents.on('did-finish-load', () => broadcastDnd())
+  overlayWin.webContents.on('did-finish-load', () => {
+    cardActive = false   // page (re)chargée → aucune carte à l'écran
+    syncSkipShortcut()
+    broadcastDnd()
+  })
   attachRendererLogger(overlayWin)
 }
 
@@ -317,6 +357,7 @@ ipcMain.on('launch-overlay', (event, { displayIndex, mode, corner, volume, nsfwF
     overlayWin.removeAllListeners('closed')
     overlayWin.destroy()
     overlayWin = null
+    cardActive = false
   }
   createOverlay(displayIndex, mode, corner, volume)
   if (setupWin) setupWin.close()
@@ -330,6 +371,12 @@ ipcMain.on('set-autostart', (event, enabled) => {
 // ── IPC : raccourcis ─────────────────────────────────────────────────────────
 // Pendant la capture d'une touche, on coupe tout (sinon Ctrl+Shift+Q fermerait l'app)
 ipcMain.on('shortcuts-suspend', () => globalShortcut.unregisterAll())
+// L'overlay signale quand une carte est à l'écran (true) ou que la file est vide (false)
+ipcMain.on('card-active', (event, active) => {
+  if (!overlayWin || event.sender !== overlayWin.webContents) return
+  cardActive = !!active
+  syncSkipShortcut()
+})
 ipcMain.on('shortcuts-resume',  (event) => event.reply('shortcuts-status', applyShortcuts()))
 ipcMain.on('shortcuts-update',  (event, shortcuts) => {
   saveSettings({ shortcuts: normalizeShortcuts(shortcuts) })

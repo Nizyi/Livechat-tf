@@ -685,14 +685,25 @@
     if (!isShowing) processNext()
   }
 
+  // Prévient le main process : le raccourci « Passer au suivant » n'est réservé
+  // que tant qu'une carte est à l'écran (sinon il volerait la touche partout)
+  let cardActiveSent = false
+  function setCardActive(active) {
+    if (active === cardActiveSent) return
+    cardActiveSent = active
+    ipcRenderer.send('card-active', active)
+  }
+
   function processNext() {
     processing = false
     if (queue.length === 0) {
       isShowing = false
       hideCard()
+      setCardActive(false)
       return
     }
     isShowing = true
+    setCardActive(true)
     const data = queue.shift()
     updateBadge()
     renderCard(data)
