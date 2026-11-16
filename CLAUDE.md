@@ -126,7 +126,7 @@ Sélectionné via `body.classList.add('mode-small')` ou `mode-large`.
 Raccourcis globaux configurables (onglet Contrôles), stockés dans `settings.shortcuts`
 (`skip` PageDown, `settings` Ctrl+Shift+P, `quit` Ctrl+Shift+Q) — chacun activable,
 touche personnalisable. `applyShortcuts()` (main.js) les enregistre et renvoie leur état
-(`ok|off|conflict|duplicate:<id>|invalid`). Suspendus pendant la capture d'une touche.
+(`ok|off|conflict|duplicate:<id>|invalid`). Suspendus pendant la capture d'une touche. `skip` n'est réservé auprès de Windows que pendant qu'une carte est affichée (l'overlay envoie `card-active` true/false, `syncSkipShortcut()`) : un raccourci global vole la touche à toutes les apps (ex. → ne bouge plus le curseur), il ne doit pas être pris en permanence.
 
 ### Lancer
 ```bash
